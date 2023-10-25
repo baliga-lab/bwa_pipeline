@@ -1,0 +1,783 @@
+#!/usr/bin/env python3
+## Variant calling v2.0
+import glob
+import sys
+import os
+import re
+from vcfutil import combine_variants
+import argparse
+import json
+
+# use globalsearch's well tested and flexible
+# pattern based FASTQ file discovery
+from globalsearch.rnaseq.find_files import find_fastq_files
+
+
+def create_genome_indexes(genome_fasta, config):
+    # samtools fasta reference file indexing
+    genome_name = genome_fasta.split(".fna")[0]
+    cmd1 = '%s faidx %s' % (config['tools']['samtools'], genome_fasta)
+    cmd2 = '%s CreateSequenceDictionary -R %s' % (config['tools']['gatk'], genome_fasta)
+    bwa_genome_index_cmd = '%s index %s' % (config['tools']['bwa'], genome_fasta)
+
+    if not os.path.exists('%s.fai' % genome_fasta):
+        print ('\033[31m %s.fai  DOES NOT exist, creating. \033[0m' % genome_fasta)
+        os.system(cmd1)
+    else:
+        print ('\033[31m %s.fai  exists. Not creating. \033[0m' % genome_fasta)
+
+    if not os.path.exists('%s.dict' % genome_name):
+        print ('\033[31m %s.dict  DOES NOT exist, creating. \033[0m' % genome_fasta)
+        os.system(cmd2)
+    else:
+        print ('\033[31m %s.dict  exists. Not creating. \033[0m' % genome_fasta)
+
+    os.system(bwa_genome_index_cmd)
+
+############# Functions ##############
+
+def create_dirs(samtools_results, gatk_results, varscan_results, data_trimmed_dir, fastqc_dir,
+                alignment_results, combined_variants):
+
+    dirs = [samtools_results, gatk_results, varscan_results, data_trimmed_dir, fastqc_dir, alignment_results,
+            combined_variants]
+    for dir in dirs:
+        # create results folder
+        print()
+        print(dir)
+        if not os.path.exists('%s' %(dir)):
+            os.makedirs('%s' %(dir))
+            print ('\033[31m %s directory doesn NOT exists. I am creating it. \033[0m' %(dir))
+        else:
+            print ('\033[31m %s directory exists. Not creating. \033[0m' %(dir))
+
+
+####################### Trimgalore for quality and trimming ###############################
+def trimgalore(first_pair_file, second_pair_file, folder_name, sample_id, file_ext,
+               data_trimmed_dir):
+    if second_pair_file is None:  # single
+        print("\033[34m Running TrimGalore (SINGLE) \033[0m")
+        cmd = 'trim_galore --fastqc_args "--outdir %s" --output_dir %s %s' % (fastqc_dir,
+                                                                              data_trimmed_dir,
+                                                                              first_pair_file)
+    else:  # paired-end
+        print("\033[34m Running TrimGalore (PAIRED) \033[0m")
+        cmd = 'trim_galore --fastqc_args "--outdir %s" --paired --output_dir %s %s %s' % (fastqc_dir,
+                                                                                          data_trimmed_dir,
+                                                                                          first_pair_file,
+                                                                                          second_pair_file)
+
+    print ('++++++ Trimgalore Command:', cmd)
+    os.system(cmd)
+
+####################### BWA for alignment ###############################
+def runBWA(alignment_results, file_ext, first_file_name, second_file_name, lane,
+           folder_name, sample_id, RGId, RGSm, RGLb, RGPu, files_2_delete,
+           data_trimmed_dir,
+           genome_fasta,
+           config):
+    print ("\033[34m Running BWA alignment... \033[0m")
+
+    # define result files
+    if second_file_name is None:  # single end reads
+        second_pair_trimmed = None
+        if file_ext == "gz":
+            first_pair_trimmed = '%s/%s_trimmed.fq.gz' % (data_trimmed_dir, first_file_name)
+        else:
+            first_pair_trimmed = '%s/%s_trimmed.fq' % (data_trimmed_dir, first_file_name)
+    else:
+        if file_ext == "gz":
+            first_pair_trimmed = '%s/%s_val_1.fq.gz'%(data_trimmed_dir,first_file_name)
+            second_pair_trimmed = '%s/%s_val_2.fq.gz'%(data_trimmed_dir,second_file_name)
+        else:
+            first_pair_trimmed = '%s/%s_val_1.fq'%(data_trimmed_dir,first_file_name)
+            second_pair_trimmed = '%s/%s_val_2.fq'%(data_trimmed_dir,second_file_name)
+
+    print ('Trimmed Files:\n 1st:%s \n 2nd:%s' %(first_pair_trimmed, second_pair_trimmed))
+
+    # modify read group information
+    read_group = "'@RG\\tID:%s\\tPL:ILLUMINA\\tSM:%s\\tLB:%s\\tPU:%s'" %(RGId, RGSm, RGLb, RGPu)
+
+    base_file_name = '%s/%s'%(alignment_results,sample_id)
+    print('Base Filename: %s' %(base_file_name))
+
+    # bwa run command
+    if second_pair_trimmed is not None:
+        cmd = "%s mem -t 16 -R %s %s %s %s > %s.sam" % (config['tools']['bwa'], read_group, genome_fasta,
+                                                        first_pair_trimmed,
+                                                        second_pair_trimmed,
+                                                        base_file_name)
+    else:
+        # single read: run BWA with only one FASTQ file
+        cmd = "%s mem -t 16 -R %s %s %s > %s.sam" % (config['tools']['bwa'], read_group, genome_fasta,
+                                                     first_pair_trimmed,
+                                                     base_file_name)
+
+    print( "++++++ Run BWA Command", cmd)
+    os.system(cmd)
+
+    files_2_delete.append('%s.sam' % (base_file_name))
+    return base_file_name
+
+
+####################### samtools fixmate, sort and index to cleanup read pair info and flags ###############################
+def run_samtools_fixmate(base_file_name, sample_id, files_2_delete, config):
+    print( "\033[34m Running SAMtools fixmate... \033[0m")
+    cmd1 = '%s fixmate -O bam %s.sam %s_fixmate.bam' % (config['tools']['samtools'], base_file_name, base_file_name)
+    cmd2 = '%s sort -@ 8 -O bam -o %s_sorted.bam -T %s/%s_temp %s_fixmate.bam' % (config['tools']['samtools'],
+                                                                                  base_file_name,
+                                                                                  config['tmp_dir'],
+                                                                                  sample_id, base_file_name)
+    cmd3 = '%s index %s_sorted.bam' % (config['tools']['samtools'], base_file_name)
+
+    print()
+    print ("++++++ Samtools Fixmate Command: ", cmd1)
+    os.system(cmd1)
+
+    print()
+    print ("++++++ Samtools Sort Command: ", cmd2)
+    os.system(cmd2)
+
+    print()
+    print ("++++++ Samtools Index Command: ", cmd3)
+    os.system(cmd3)
+
+    # add  temp files to list to delete
+    temp_files = ['%s_sorted.bam' % base_file_name, '%s_sorted.bam.bai' % base_file_name, '%s_fixmate.bam' % base_file_name]
+    for temp_file in temp_files:
+        files_2_delete.append(temp_file)
+
+
+####################### GATK 1st Pass ###############################
+def runGATK(base_file_name,files_2_delete,exp_name,alignment_results):
+    print("\033[34m Running GATK Realigner.. \033[0m")
+    #run Target Interval Creater command java -Xmx128m -jar
+    #cmd1 = '%s --java-options "-Xmx4g" -T RealignerTargetCreator -R %s -I %s_sorted.bam -o %s.intervals' % (GATK, genome_fasta, base_file_name, base_file_name)
+    #run Indel Realigner command
+    #cmd2 = '%s -T IndelRealigner -R %s -I %s_sorted.bam -targetIntervals %s.intervals -o %s_realigned.bam' %(GATK, genome_fasta, base_file_name, base_file_name, base_file_name)
+    # index bam file
+    #cmd3 = '%s index %s_sorted.bam' % (SAMTOOLS, base_file_name)
+    # Detect covariates
+    cmd4 = '%s BaseRecalibrator -R %s -I %s/%s_marked.bam --known-sites NA -O %s_recal.table' % (GATK, genome_fasta,alignment_results,exp_name,base_file_name)
+    # Adjust quality scores
+    cmd5 = '%s PrintReads -R %s -I %s/%s_marked.bam --BQSR %s_recal.table -O %s_recal.bam' % (GATK, genome_fasta, alignment_results,exp_name, base_file_name, base_file_name)
+
+    #print("++++++ Command GATK Interval Creater: ", cmd1)
+    #os.system(cmd1)
+    #print( "++++++ Command GATK Realigner: ", cmd2)
+    #os.system(cmd2)
+    #print( "++++++ Command GATK index BAM: ", cmd3)
+    #os.system(cmd3)
+    #print("++++++ Command GATK BaseRecalibrator: ", cmd4)
+    #os.system(cmd4)
+    #print( "++++++ Command GATK PrintReads: ", cmd5)
+    #os.system(cmd5)
+    temp_files = ['%s.intervals'%base_file_name,'%s_realigned.bam'%base_file_name,'%s_realigned.bai'%base_file_name,'%s_recal.table'%base_file_name,'%s_recal.bam'%base_file_name,'%s_recal.bai'%base_file_name]
+    for temp_file in temp_files:
+        files_2_delete.append(temp_file)
+
+
+####################### Mark duplicates with GATK ###############################
+def runMarkDuplicates(alignment_results,exp_name, base_file_name, config):
+    print()
+    print("\033[34m Running Mark Duplicates.. \033[0m")
+    print( "Exp Name:" + exp_name)
+    print()
+    # collect list of bwa aligned bam files
+    aligned_bams = glob.glob('%s*_sorted.bam' %(base_file_name))
+    print('aligned_bams:%s' %(aligned_bams))
+    # creaate command line parameter for each file
+    print( 'Input BWA aligned BAM Files...')
+    bamList = []
+    for i in aligned_bams:
+        inputAdd = 'INPUT=%s' %(i)
+        bamList.append(inputAdd)
+        print(i)
+    bam_list_joined = " ".join(bamList)
+
+    print()
+    print( 'Output BAM File...')
+    marked_bam_name = '%s/%s_marked.bam' %(alignment_results,exp_name)
+    metrics_file = '%s/%s.metrics' %(alignment_results,exp_name)
+    alignment_files_path = '%s/%s'%(alignment_results,exp_name)
+    print (marked_bam_name)
+    #print('bam_list_joined:%s'%(bam_list_joined))
+
+    # Mark Duplicates
+    cmd1 = '%s MarkDuplicates %s VALIDATION_STRINGENCY=LENIENT M=%s O=%s' % (config['tools']['picard'],
+                                                                             bam_list_joined, metrics_file, marked_bam_name)
+    print()
+    print( "++++++ Mark Duplicated Command:... ", cmd1)
+    os.system(cmd1)
+    print()
+
+    # index bam file
+    cmd2 = '%s index %s' % (config['tools']['samtools'], marked_bam_name)
+    print()
+    print( "++++++ Index bamfile Command:... ", cmd2)
+    os.system(cmd2)
+    print()
+    return alignment_files_path
+
+
+####################### Samtools Variant Calling ###############################
+def samtools_variants(samtools_results, alignment_files_path, exp_name, folder_name, config):
+    print()
+    print( "\033[34m Running SAMtools Variant Calling.. \033[0m")
+    # create samtools results specific results directory
+    samtools_files_path = '%s/%s'%(samtools_results,exp_name)
+
+    # Produce BCF file with all locations in the genome
+    cmd1 = '%s mpileup --threads 16 -Ou -f %s %s_marked.bam | %s call -vmO v --ploidy 1 -o %s_samtools.vcf' % (config['tools']['bcftools'], genome_fasta, alignment_files_path, config['tools']['bcftools'], samtools_files_path)
+    # Prepare vcf file for querying
+    #cmd2 = '%s -p vcf %s_samtools.vcf.gz' % (TABIX, samtools_files_path)
+    #Filtering
+    percentageString = "%"
+    cmd3 = "%s filter -O v -o %s_samtools_final.vcf -s LOWQUAL -i 'QUAL>10' %s_samtools.vcf" % (config['tools']['bcftools'],
+                                                                                                samtools_files_path, samtools_files_path)
+
+    print()
+    print( "++++++ Variant Calling mpileup: ", cmd1)
+    os.system(cmd1)
+
+    #print()
+    #print( "++++++ Variant Calling tabix: ", cmd2)
+    #os.system(cmd2)
+
+    print()
+    print( "++++++ Variant Calling filtering: ", cmd3)
+    os.system(cmd3)
+
+    #files_2_delete.append('%s_sorted.bam, %s_sorted.bam.bai, %s_fixmate.bam'%(base_file_name,base_file_name,base_file_name))
+    return samtools_files_path
+
+
+####################### Varscan Variant Calling ###############################
+def varscan_variants(alignment_files_path, varscan_results, exp_name, folder_name, files_2_delete, config): # with varscan
+    print()
+    print( "\033[34m Running Varscan.. \033[0m")
+    # create varscan results specific results directory
+    varscan_files_path = '%s/%s'%(varscan_results,exp_name)
+
+    # varscan mpileup
+    cmd1 = '%s mpileup --input-fmt-option nthreads=8 -B -f %s -o %s.pileup %s_marked.bam' % (config['tools']['samtools'],
+                                                                                             genome_fasta, varscan_files_path, alignment_files_path)
+    # varscan for snps
+    cmd2 = '%s mpileup2snp %s.pileup --output-vcf 1 --min-coverage 8 --min-reads2 2 --min-avg-qual 30 --strand-filter 0 > %s_varscan_snps_final.vcf' % (config['tools']['varscan'],
+                                                                                                                                                        varscan_files_path,
+                                                                                                                                                        varscan_files_path)
+    # varscan for indels
+    cmd3 = '%s mpileup2indel %s.pileup --output-vcf 1 --min-coverage 8 --min-reads2 2 --min-avg-qual 30 --strand-filter 0 > %s_varscan_inds_final.vcf' % (config['tools']['varscan'],
+                                                                                                                                                          varscan_files_path,
+                                                                                                                                                          varscan_files_path)
+
+    print( "++++++ samtools Mpileup: ", cmd1)
+    os.system(cmd1)
+
+    print()
+    print( "++++++ Varscan for SNPs: ", cmd2)
+    os.system(cmd2)
+
+    print()
+    print( "++++++ Varscan for INDELS: ", cmd3)
+    os.system(cmd3)
+
+    files_2_delete.append('%s.pileup' % varscan_files_path)
+
+    return varscan_files_path
+
+
+
+####################### GATK Variant Calling ###############################
+def gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, config): # with GATK HaploTypeCaller
+    print()
+    print( "\033[34m Running GATK Haplotype Variant Caller.. \033[0m")
+    # create varscan results specific results directory
+    gatk_files_path = '%s/%s'%(gatk_results,exp_name)
+
+    # haplotype command
+    cmd1 = '%s HaplotypeCaller -R %s -I %s_marked.bam -ploidy 1 -stand-call-conf 30 -O %s_gatk_raw.vcf' % (config['tools']['gatk'],
+                                                                                                           genome_fasta, alignment_files_path, gatk_files_path)
+    # Select snp variants
+    cmd2 = '%s SelectVariants -R %s -V %s_gatk_raw.vcf -select-type SNP -O %s_gatk_snps.vcf' % (config['tools']['gatk'],
+                                                                                                genome_fasta, gatk_files_path,gatk_files_path)
+    # Apply filters to SNPs
+    cmd3 = "%s VariantFiltration -R %s -V %s_gatk_snps.vcf --filter-expression 'QD < 2.0 || FS > 60.0 || MQ < 40.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0' --filter-name 'my_snp_filter' -O %s_gatk_snps_filtered.vcf" % (config['tools']['gatk'],
+                                                                                                                                                                                                                                 genome_fasta, gatk_files_path, gatk_files_path)
+    # Select indel variants
+    cmd4 = '%s SelectVariants -R %s -V %s_gatk_raw.vcf -select-type INDEL -O %s_gatk_inds.vcf' % (config['tools']['gatk'], genome_fasta, gatk_files_path,gatk_files_path)
+    # Apply filters to indels
+    cmd5 = "%s VariantFiltration -R %s -V %s_gatk_inds.vcf --filter-expression 'QD < 2.0 || FS > 200.0 || ReadPosRankSum < -20.0' --filter-name 'my_indel_filter' -O %s_gatk_inds_filtered.vcf" % (config['tools']['gatk'], genome_fasta, gatk_files_path, gatk_files_path)
+    # Merge vcf files
+    cmd6 = "%s MergeVcfs I=%s_gatk_snps_filtered.vcf I= %s_gatk_inds_filtered.vcf O=%s_gatk_final.vcf" % (config['tools']['picard'], gatk_files_path, gatk_files_path, gatk_files_path)
+
+    print()
+    print( "++++++ GATK HaplotypeCaller Comnand: ", cmd1)
+    os.system(cmd1)
+
+    print()
+    print( "++++++ Select SNP Variants: ", cmd2)
+    os.system(cmd2)
+
+    print()
+    print( "++++++ Applying filters for SNPs: ", cmd3)
+    os.system(cmd3)
+
+    print()
+    print( "++++++ Select IndelVariants: ", cmd4)
+    os.system(cmd4)
+
+    print()
+    print( "++++++ Applying filters for Indelss: ", cmd5)
+    os.system(cmd5)
+
+    print()
+    print( "++++++ Merging vcf files: ", cmd6)
+    os.system(cmd6)
+
+    return gatk_files_path
+
+
+####################### Run SNPEff annotations ###############################
+def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combined_variants, exp_name, config):
+    print()
+    print( "\033[34m Running SNPEff Annotations.. \033[0m")
+
+    #vcf_files = ['%s_varscan_inds_final.vcf'%(varscan_files_path), '%s_varscan_snps_final.vcf'%(varscan_files_path), '%s_gatk_final.vcf'%(gatk_files_path)]
+    vcf_files = ['%s_samtools_final.vcf' % samtools_files_path,
+                 '%s_varscan_inds_final.vcf' % varscan_files_path,
+                 '%s_varscan_snps_final.vcf' % varscan_files_path,
+                 '%s_gatk_final.vcf' % gatk_files_path]
+
+    # VCF file list to process
+    print('input vcf_files:\n')
+    for vcf_file in vcf_files:
+        print(vcf_file + '\n')
+
+    #varscan_files = ['%s_varscan_inds_final.vcf'%(varscan_files_path), '%s_varscan_snps_final.vcf'%(varscan_files_path)]
+    #print('varscan_files:%s' %(varscan_files))
+
+    # create output file for combined variants output
+    combined_variants_output = '%s/%s_combined_variants.txt' %(combined_variants,exp_name)
+    print('combined_variants_output:%s' %(combined_variants_output))
+
+    # open the final output file for writing before combining
+    run_snpeff.t = open(combined_variants_output, 'w')
+
+    for vcf_file in vcf_files:
+        print()
+        print("Processing VCF file:" + vcf_file + '\n')
+
+        if vcf_file == '%s_samtools_final.vcf.gz'%(samtools_files_path):
+            # reformat file for gzip compression
+            #plain_vcf_name = re.split('.gz', vcf_file)[0]
+            #os.system('mv %s %s' %(vcf_file, plain_vcf_name))
+            #os.system('%s view -Oz -o %s %s' % (BCFTOOLS, vcf_file, plain_vcf_name))
+            #os.system('%s index %s' % (BCFTOOLS, vcf_file))
+
+            # Rename chromosome names to match snpeff database
+            vcf_file_renamed = re.split('final.', vcf_file)[0] + 'renamed.' + re.split('final.', vcf_file)[1]
+            print("vcf_file_renamed: " + vcf_file_renamed)
+
+            # gzip and index vcf file with tabix
+            bgzip_cmd1 = '%s -c %s > %s' % (config['tools']['bgzip'], vcf_file, vcf_file)
+            os.system(bgzip_cmd1)
+
+            tabix_cmd1 = '%s -p vcf %s' % (config['tools']['tabix'], vcf_file)
+            os.system(tabix_cmd1)
+
+            bcft_cmd1 = '%s annotate --rename-chrs %s/chrom_names.txt %s > %s' % (config['tools']['bcftools'],
+                                                                                  genome_dir,vcf_file,vcf_file_renamed)
+            print()
+            print("Renaming chromosomes for snpEFF with bcftools:" + bcft_cmd1)
+            os.system(bcft_cmd1)
+
+        else:
+            # Rename chromosome names to match snpeff database
+            vcf_file_renamed = re.split('final.', vcf_file)[0] + 'renamed.' + re.split('final.', vcf_file)[1]
+            print("vcf_file_renamed: " + vcf_file_renamed)
+
+            vcf_file_bgzip = re.split('final.', vcf_file)[0] + 'renamed.' + re.split('final.', vcf_file)[1] + ".bgz"
+
+
+            # gzip and index vcf file with tabix
+            bgzip_cmd1 = '%s -c %s > %s' % (config['tools']['bgzip'], vcf_file, vcf_file_bgzip)
+            os.system(bgzip_cmd1)
+
+            tabix_cmd1 = '%s -p vcf %s' % (config['tools']['tabix'], vcf_file_bgzip)
+            os.system(tabix_cmd1)
+
+            bcft_cmd1 = '%s annotate --rename-chrs %s/chrom_names.txt %s > %s' % (config['tools']['bcftools'],
+                                                                                  genome_dir,
+                                                                                  vcf_file_bgzip, vcf_file_renamed)
+            print()
+            print("Renaming chromosomes for snpEFF with bcftools:" + bcft_cmd1)
+            os.system(bcft_cmd1)
+
+            # gzip and index vcf file with tabix
+            #bgzip_cmd1 = '%s -c %s > %s.gz' % (BGZIP, vcf_file_renamed,vcf_file_renamed)
+            #os.system(bgzip_cmd1)
+
+            #tabix_cmd1 = '%s -p vcf %s.gz' % (TABIX, vcf_file_renamed)
+            #os.system(tabix_cmd1)
+
+        # create file names for output
+        snpeff_vcf = re.split('final.', vcf_file)[0] + 'snpeff.' + re.split('final.', vcf_file)[1]
+        print('snpeff_vcf:' + snpeff_vcf)
+
+        snpeff_filtered_vcf = re.split('renamed.', vcf_file_renamed)[0] + 'snpeff_filtered.' + re.split('renamed.', vcf_file_renamed)[1]
+        print('snpeff_filtered_vcf:' + snpeff_filtered_vcf)
+        snpeff_stats = re.split('final.', vcf_file)[0] + 'snpeff_stats.txt'
+        snpeff_final = re.split('final.', vcf_file)[0] + 'snpeff_final.txt'
+
+        # snpeff formateff commands
+        cmd1 ='%s -ud 0 -classic -csvStats %s -geneId -lof -v -formatEff -o gatk %s %s > %s' % (config['tools']['snpeff'],
+                                                                                                snpeff_stats, snpeff_db, vcf_file_renamed, snpeff_vcf)
+        # snpeff filtering command
+        cmd2 = 'cat %s | %s filter -p "((FILTER = \'PASS\') & (EFF[*].CODING != \'NON_CODING\'))" > %s' % (snpeff_vcf,
+                                                                                                           config['tools']['snpsift'],
+                                                                                                           snpeff_filtered_vcf)
+        # create final one line variant file
+        cmd3 ='cat %s | %s | %s extractFields - CHROM POS REF ALT AF AC DP MQ "(FILTER = \'PASS\')" "EFF[*].EFFECT" "EFF[*].IMPACT" "EFF[*].FUNCLASS" "EFF[*].CODON" "EFF[*].AA" "EFF[*].AA_LEN" "EFF[*].GENE" "EFF[*].CODING" "EFF[*].RANK" "EFF[*].DISTANCE" > %s' % (snpeff_filtered_vcf,
+                                                                                                                                                                                                                                                                        config['tools']['vceff_opl'],
+                                                                                                                                                                                                                                                                        config['tools']['snpsift'],
+                                                                                                                                                                                                                                                                        snpeff_final)
+
+        print()
+        print( "++++++ Running SNPEff Formateff command: ", cmd1)
+        os.system(cmd1)
+
+        print()
+        print( "++++++ Running SNPEff Filtering: ", cmd2)
+        os.system(cmd2)
+
+        print()
+        print( "++++++ Running SNPEff Oneline final formatter: ", cmd3)
+        os.system(cmd3)
+        #sys.exit()
+
+        # Run function to combine vcf files into a single file from 3 callers
+        print()
+        combine_variants(snpeff_filtered_vcf, snpeff_final, combined_variants, run_snpeff.t)
+    run_snpeff.t.close()
+
+####################### Collate variants from three programs ###############################
+def salomon(aggregatedList):
+    #this function takes a list of lists of variants and find the consensus list
+
+    # f.1. finding the unique positions
+    uniqueLocations=[]
+    for variants in aggregatedList:
+        for variant in variants:
+            uniqueLocation=variant[:3]
+            if uniqueLocation not in uniqueLocations:
+                uniqueLocations.append(uniqueLocation)
+
+    # f.2. building the full consensus list
+    consensus_list=[]
+    for uniqueLocation in uniqueLocations:
+        callers=[]
+        body=[]
+        freqs = []
+        dps = []
+        freq=''
+        dp =''
+        freqFloats = []
+
+        for variants in aggregatedList:
+            for variant in variants:
+                if uniqueLocation == variant[:3]:
+                    body=variant[:-2]
+                    callers.append(variant[-2])
+                    if variant[-2] == 'varscan':
+                        freq=variant[-3]
+                        freqs.append(freq)
+                        freqFloat = freq.split('%')[0]
+                        freqFloats.append(freqFloat)
+                        #print variant[:-2]
+                        dp = "NA"
+                        dps.append(dp)
+
+                        if freq == '':
+                            print( 'WARNING varscan did not provide frequency value for variant')
+                            stringVariant='\t'.join(variant)
+                            #print stringVariant
+
+                    if variant[-2] == 'samtools':
+                        freq=variant[-3]
+                        freqs.append(freq)
+                        freqFloat = freq.split('%')[0]
+                        freqFloats.append(freqFloat)
+                        dp =variant[-1]
+                        dps.append(dp)
+                        if freq == '':
+                            print( 'WARNING samtools did not provide frequency value for variant')
+                            stringVariant='\t'.join(variant)
+                            #print stringVariant
+
+                    if variant[-2] == 'gatk':
+                        dp = variant[-1]
+                        dps.append(dp)
+                        freq=variant[-3]
+                        freqs.append(freq)
+                        freqFloat = freq.split('%')[0]
+                        freqFloats.append(freqFloat)
+
+        # incorporating what we found
+        callersString=':'.join(callers)
+        freqsString=':'.join(freqs)
+        dpsString=':'.join(dps)
+        freqFloatString = max(freqFloats)
+
+        # Get the samtools frequency as final frequency if available otherwise pick varscan freq.
+        #print(callers)
+        #print(freqs)
+        if 'samtools' in callers and len(callers) > 1:
+            final_freq = freqs[callers.index('samtools')]
+        elif 'varscan' in callers and 'samtools' not in callers:
+            final_freq = freqs[callers.index('varscan')]
+        else:
+            final_freq = freqs[0]
+
+        body.append(callersString)
+        body.append(freqsString)
+        body.append(dpsString)
+        body.append(freqFloatString)
+        body.append(final_freq)
+        consensus_list.append(body)
+
+    return consensus_list
+
+
+####################### Variant Retriever ###############################
+def variantRetriever(combined_output_file):
+
+    # this function retrieves the variants for each caller
+    varscan_list = []
+    gatk_list = []
+    samtools_list = []
+    print('combined_output')
+    print(os.stat(combined_output_file).st_size)
+
+    # Start reading each line and append to appropriate program list
+    with open(combined_output_file) as f:
+        for line in f:
+            vector = line.split('\t')
+            vector[-1]=vector[-1].replace('\n','')
+            program=vector[-2]
+            #print('program is:%s' %(program))
+            if program == 'varscan':
+                varscan_list.append(vector)
+            if program == 'gatk':
+                gatk_list.append(vector)
+            if program == 'samtools':
+                samtools_list.append(vector)
+        f.close()
+
+    return varscan_list,gatk_list,samtools_list
+
+
+####################### Collate variants ###############################
+def collate_variants(combined_output_file,merged_variants_file):
+    print
+    print( "\033[34m Running Collate variants.. \033[0m")
+
+    # 2. recovering list of variants
+    varscan_list,gatk_list,samtools_list = variantRetriever(combined_output_file)
+    print( 'detected variants',len(varscan_list),len(gatk_list),len(samtools_list))
+
+    # 3. finding consensus list of variants
+    print( 'merging...')
+    consensus_list = salomon([varscan_list,gatk_list,samtools_list])
+    print( 'final set',len(consensus_list))
+
+    # 4. writing a consensus list
+    print( 'writing file...')
+    #print(merged_variants_file)
+
+    g = open(merged_variants_file, 'w')
+    g.write('CHROM\tPOS\t1ST_REF_BASE\tALT\tCHANGE\tEFFECT\tIMPACT\tCLASS\tCODON\tAA_CHANGE\tGENE\tCODING\tSAMTOOLS_FREQ\tVARIANT_CALLERS\tVARIANT_FREQS\tVARIANT_READS\tFREQ\tF1\n')
+    for element in consensus_list:
+        line2write='\t'.join(element)
+        line2write=line2write+'\n'
+        g.write(line2write)
+    g.close()
+    #return collate_variants.combined_output_file
+
+
+####################### Delete temporary files ###############################
+def delete_temp_files(files_2_delete):
+    print
+    print( "\033[34m Deleting Temporry files.. \033[0m")
+    for file in files_2_delete:
+        cmd = 'rm %s' %(file)
+        print(cmd)
+        #os.system(cmd)
+
+####################### Running the Pipeline ###############################
+#PATTERNS = ["*_R{{readnum}}_001.fastq*"]
+#PATTERNS = ["*.fastq"]
+
+def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, config):
+    print("run_pipeline()")
+    # retrieve list of pairs. paired end data has both elements set,
+    # single read has the second element of the pair set to None
+    fastq_files = find_fastq_files(data_folder, config['fastq_patterns'])
+    print(fastq_files)
+
+    folder_count = 1
+    files_2_delete = [] # create a list of files to delete later and keep adding to the list
+
+    # Get the folder name
+    folder_name = data_folder.split('/')[-1]
+    print()
+    print()
+    print( '\033[33mProcessing Folder: %s \033[0m' % folder_name)
+
+    # get the list of first file names in paired end sequences
+    first_pair_files = [f[0] for f in fastq_files]
+    second_pair_files = [f[1] for f in fastq_files if f[1] is not None]
+
+    print('There are %s fastq files in this directory.' % (len(first_pair_files) * 2))
+    print("First pair files:")
+    for i in first_pair_files:
+        print(i)
+
+    print("Second pair files:")
+    for i in second_pair_files:
+        print(i)
+
+    # Program specific results directories
+    folder_results_dir = "%s/%s/%s" % (resultdir, organism, folder_name)
+    samtools_results = os.path.join(folder_results_dir, "samtools_results")
+    gatk_results = os.path.join(folder_results_dir, "gatk_results")
+    varscan_results = os.path.join(folder_results_dir, "varscan_results")
+    alignment_results = os.path.join(folder_results_dir, "alignment_results")
+    combined_variants = os.path.join(folder_results_dir, "combined_variants")
+
+    # final results files
+    combined_output_file = os.path.join(combined_variants, '%s_combined_variants.txt' % folder_name)
+    print("combined_output_file: '%s'" % combined_output_file)
+    merged_variants_file = os.path.join(combined_variants, '%s_merged_variants_final.txt' % folder_name)
+    print("combined_output_file: '%s'" % combined_output_file)
+
+    # Loop through each file and create filenames
+    file_count = 1
+    exp_name = folder_name
+    for first_pair_file, second_pair_file in fastq_files:
+        first_file_name_full = os.path.basename(first_pair_file)
+        file_ext = first_pair_file.split('.')[-1]
+        second_file_name_full = os.path.basename(second_pair_file) if second_pair_file is not None else None
+
+        print('\033[32m Processing Pair: %s of %s (%s)\033[0m' %(file_count, len(first_pair_files), first_file_name_full ))
+        first_file_name = re.split('.fastq|.fastq.gz',first_file_name_full)[0]
+        second_file_name = re.split('.fastq|.fastq.gz', second_file_name_full)[0] if second_file_name_full is not None else None
+        print("first_file_name: '%s', second_file_name: '%s'" % (first_file_name, second_file_name))
+
+        # Collect Sample attributes. The original extracts the a for A_B_C_L001_R1_001
+        # and takes "C" for the lane
+        try:
+            lane = first_file_name.split("/")[-1].split("_")[2]
+        except:
+            lane = "SNA"  # not available in file name
+        print("Lane: %s" %(lane))
+        sample_id = re.split('.fastq|.fastq.gz', first_file_name)[0]
+        print("sample_id: %s"  %(sample_id))
+
+        # create readgroup info
+        RGId = sample_id
+        RGSm = exp_name
+        RGLb = exp_name + "_l"
+        RGPu = lane
+        print( "RG: ID: %s SM: %s LB: %s PU: %s" %(RGId, RGSm, RGLb, RGPu))
+
+        # 00. Get directories
+        create_dirs(samtools_results, gatk_results, varscan_results,
+                    data_trimmed_dir, fastqc_dir, alignment_results,
+                    combined_variants)
+
+        # create genome indexes
+        create_genome_indexes(genome_fasta, config)
+
+        # 01. Run TrimGalore
+        trimgalore(first_pair_file, second_pair_file, folder_name, sample_id, file_ext,
+                   data_trimmed_dir)
+
+        # 02. Run bwa alignment to produce SAM file.
+        base_file_name = runBWA(alignment_results, file_ext, first_file_name,
+                                second_file_name, lane,folder_name, sample_id,
+                                RGId, RGSm, RGLb, RGPu, files_2_delete,
+                                data_trimmed_dir, genome_fasta, config)
+
+        # 03. Run samtools fixmate
+        run_samtools_fixmate(base_file_name,sample_id,files_2_delete, config)
+        file_count += 1
+
+    # 05. Run Mark duplicates
+    # WW: base_file_name is dependent on the loop to be run, does that make any sense ?
+    alignment_files_path = runMarkDuplicates(alignment_results, exp_name, base_file_name, config)
+
+    # 0.4 Run GATK 1st PASS
+    #runGATK(base_file_name,files_2_delete,exp_name,alignment_results)
+    # 06. Run Samtools variant calling
+    samtools_files_path = samtools_variants(samtools_results, alignment_files_path, exp_name, folder_name, config)
+
+    # 07. Run varscan variant calling
+    varscan_files_path = varscan_variants(alignment_files_path, varscan_results, exp_name,
+                                          folder_name, files_2_delete, config)
+    # 08. Run GATK variant Calling
+    gatk_files_path = gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, config)
+
+    # 09. Run SNPEff annotations
+    vcf_file = run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combined_variants, exp_name, config)
+    # 10. Collate variants into single file from 3 callers and unify them
+    collate_variants(combined_output_file,merged_variants_file)
+    # 11. Delete temporary files_2_delete
+    #delete_temp_files(files_2_delete)
+    folder_count += 1
+
+
+DESCRIPTION = "bwa_pipeline.py - BWA pipeline V2.0"
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     description=DESCRIPTION)
+    # needs to be the FULL PATH, does not expand
+    #parser.add_argument('datadir', help="path to raw_data directory")
+    # This is likely something like the sample number
+    parser.add_argument('input_folder', help="input folder without the path")
+
+    # results folder
+    #parser.add_argument('resultdir', help="result directory")
+    parser.add_argument('--organism', help="organism", default="mtb")
+    parser.add_argument('--config', help="configuration json file", default="bwa_config.json")
+    # run dir needs to contain "reference" and will have a results directory
+    args = parser.parse_args()
+    with open(args.config) as infile:
+        config = json.load(infile)
+
+    ############# Data and Results directories ##############
+    if not os.path.exists(config["result_dir"]):
+        os.makedirs(config["result_dir"])
+
+    # First set the top level analysis directory
+    data_folder = '%s/%s' %(config["data_dir"], args.input_folder)
+    data_trimmed_dir = "%s/trimmed" % data_folder
+    genome_dir = "%s/reference" % config["run_dir"]
+    fastqc_dir = "%s/%s/%s/fastqc_results" % (config["result_dir"], args.organism, args.input_folder)
+
+    known_sites = '%s-variants-compiled_sorted.vcf' % args.organism
+    print("genome dir: '%s'" % genome_dir)
+
+    ######### Annotation databases ############################
+    # snpEff databases
+    genome_gff = glob.glob('%s/%s' % (genome_dir,
+                                      config['organisms'][args.organism]["genome_gff"]))
+    genome_fasta_path = "%s/%s" % (genome_dir, config['organisms'][args.organism]["genome_fasta"])
+    print("GENOME FASTA: '%s'" % genome_fasta_path)
+    genome_fasta = glob.glob('%s/%s' % (genome_dir,
+                                        config['organisms'][args.organism]["genome_fasta"]))[0]
+
+    snpeff_db = config["organisms"][args.organism]['snpeff_db']
+    run_pipeline(args.organism, data_folder, config["result_dir"], snpeff_db, genome_fasta, config)

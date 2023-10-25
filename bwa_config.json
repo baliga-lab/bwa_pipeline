@@ -1,0 +1,36 @@
+{
+    "run_dir": "/bwa_pipeline",
+    "data_dir": "/bwa_data",
+    "result_dir": "/bwa_results",
+    "tools": {
+	"snpeff": "java -Xmx8G -jar /snpEff/snpEff.jar",
+	"snpsift": "java -Xmx8g -jar /snpEff/SnpSift.jar",
+	"samtools": "samtools",
+	"bwa": "bwa",
+	"gatk": "gatk",
+	"picard": "java -Xmx4g -jar /jar_files/picard-2.27.5.jar",
+	"varscan": "java -Xmx8g -jar /jar_files/VarScan.v2.3.9.jar",
+	"bcftools": "bcftools",
+	"tabix": "tabix",
+	"bgzip": "bgzip",
+	"vceff_opl": "perl /snpEff/scripts/vcfEffOnePerLine.pl"
+
+    },
+    "fastq_patterns": ["*.fastq"],
+    "tmp_dir": "/tmp",
+    "organisms": {
+	    "mmp": { "snpeff_db": "Methanococcus_maripaludis_s2" },
+	    "dvh": { "snpeff_db": "Desulfovibrio_vulgaris_str_hildenborough" },
+	    "hal": { "snpeff_db": "Halobacterium_salinarum_nrc_1" },
+	    "msm": {
+	        "snpeff_db": "Mycobacterium_smegmatis_str_mc2_155_gca_000767605",
+	        "genome_gff": "GCF_000767605.1_ASM767605v1_genomic.gff",
+	        "genome_fasta": "GCF_000767605.1_ASM76760v1_genomic.fna"
+	    },
+	    "mtb": {
+	        "snpeff_db": "Mycobacterium_tuberculosis_h37rv",
+	        "genome_gff": "GCF_000195955.2_ASM19595v2_genomic_modified.gff",
+	        "genome_fasta": "GCF_000195955.2_ASM19595v2_genomic_modified.fna"
+	    }
+    }
+}
