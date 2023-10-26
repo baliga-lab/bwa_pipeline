@@ -124,13 +124,6 @@ def runBWA(alignment_results, file_ext, first_file_name, second_file_name, lane,
 ####################### samtools fixmate, sort and index to cleanup read pair info and flags ###############################
 def run_samtools_fixmate(base_file_name, sample_id, files_2_delete, config):
     print( "\033[34m Running SAMtools fixmate... \033[0m")
-    #cmd1 = '%s fixmate -O bam %s.sam %s_fixmate.bam' % (config['tools']['samtools'], base_file_name, base_file_name)
-    #cmd2 = '%s sort -@ 8 -O bam -o %s_sorted.bam -T %s/%s_temp %s_fixmate.bam' % (config['tools']['samtools'],
-    #                                                                              base_file_name,
-    #                                                                              config['tmp_dir'],
-    #                                                                              sample_id, base_file_name)
-    #cmd3 = '%s index %s_sorted.bam' % (config['tools']['samtools'], base_file_name)
-
     samtools_cmd = config['tools']['samtools']
     fixmate_cmd = [samtools_cmd, "fixmate", "-O", "bam",
                    "%s.sam" % base_file_name,
@@ -188,45 +181,37 @@ def runGATK(base_file_name,files_2_delete,exp_name,alignment_results):
 
 
 ####################### Mark duplicates with GATK ###############################
-def runMarkDuplicates(alignment_results,exp_name, base_file_name, config):
-    print()
+def runMarkDuplicates(alignment_results, exp_name, base_file_name, config):
     print("\033[34m Running Mark Duplicates.. \033[0m")
-    print( "Exp Name:" + exp_name)
-    print()
+    print("Exp Name:", exp_name)
     # collect list of bwa aligned bam files
-    aligned_bams = glob.glob('%s*_sorted.bam' %(base_file_name))
-    print('aligned_bams:%s' %(aligned_bams))
+    aligned_bams = glob.glob('%s*_sorted.bam' % base_file_name)
+
+    print('Output BAM File...')
+    marked_bam_name = '%s/%s_marked.bam' % (alignment_results, exp_name)
+    metrics_file = '%s/%s.metrics' % (alignment_results, exp_name)
+    alignment_files_path = '%s/%s' % (alignment_results, exp_name)
+
+    picard_cmd = config['tools']['picard']
+    # Mark Duplicates, use new format for picard command line
+    markdup_cmd = [picard_cmd, "MarkDuplicates"]
     # create command line parameter for each file
-    print( 'Input BWA aligned BAM Files...')
-    bamList = []
-    for i in aligned_bams:
-        inputAdd = 'INPUT=%s' %(i)
-        bamList.append(inputAdd)
-        print(i)
-    bam_list_joined = " ".join(bamList)
+    for aligned_bam in aligned_bams:
+        markdup_cmd += ["-INPUT", aligned_bam]
+    markdup_cmd += ["-VALIDATION_STRINGENCY", "LENIENT",
+                    "-M", metrics_file,
+                    "-O", marked_bam_name,
+                    # include the sort order so Picard knows what to do
+                    "-ASO", "coordinate"]
 
-    print()
-    print( 'Output BAM File...')
-    marked_bam_name = '%s/%s_marked.bam' %(alignment_results,exp_name)
-    metrics_file = '%s/%s.metrics' %(alignment_results,exp_name)
-    alignment_files_path = '%s/%s'%(alignment_results,exp_name)
-    print (marked_bam_name)
-    #print('bam_list_joined:%s'%(bam_list_joined))
+    print( "++++++ Mark Duplicated Command: '%s'... " % ' '.join(markdup_cmd))
+    compl_proc = subprocess.run(' '.join(markdup_cmd), shell=True, capture_output=False, check=True)
 
-    # Mark Duplicates
-    cmd1 = '%s MarkDuplicates %s VALIDATION_STRINGENCY=LENIENT M=%s O=%s' % (config['tools']['picard'],
-                                                                             bam_list_joined, metrics_file, marked_bam_name)
-    print()
-    print( "++++++ Mark Duplicated Command:... ", cmd1)
-    os.system(cmd1)
-    print()
+    # index BAM file with Samtools
+    index_cmd = [config['tools']['samtools'], "index", marked_bam_name]
+    print( "++++++ Index bamfile Command: '%s'... " % ' '.join(index_cmd))
+    compl_proc = subprocess.run(' '.join(index_cmd), shell=True, capture_output=False, check=True)
 
-    # index bam file
-    cmd2 = '%s index %s' % (config['tools']['samtools'], marked_bam_name)
-    print()
-    print( "++++++ Index bamfile Command:... ", cmd2)
-    os.system(cmd2)
-    print()
     return alignment_files_path
 
 
