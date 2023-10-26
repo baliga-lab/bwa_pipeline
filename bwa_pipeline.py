@@ -7,6 +7,7 @@ import re
 from vcfutil import combine_variants
 import argparse
 import json
+import subprocess
 
 # use globalsearch's well tested and flexible
 # pattern based FASTQ file discovery
@@ -47,7 +48,7 @@ def create_dirs(samtools_results, gatk_results, varscan_results, data_trimmed_di
         print(dir)
         if not os.path.exists('%s' %(dir)):
             os.makedirs('%s' %(dir))
-            print ('\033[31m %s directory doesn NOT exists. I am creating it. \033[0m' %(dir))
+            print ('\033[31m %s directory does NOT exist. I am creating it. \033[0m' %(dir))
         else:
             print ('\033[31m %s directory exists. Not creating. \033[0m' %(dir))
 
@@ -123,24 +124,33 @@ def runBWA(alignment_results, file_ext, first_file_name, second_file_name, lane,
 ####################### samtools fixmate, sort and index to cleanup read pair info and flags ###############################
 def run_samtools_fixmate(base_file_name, sample_id, files_2_delete, config):
     print( "\033[34m Running SAMtools fixmate... \033[0m")
-    cmd1 = '%s fixmate -O bam %s.sam %s_fixmate.bam' % (config['tools']['samtools'], base_file_name, base_file_name)
-    cmd2 = '%s sort -@ 8 -O bam -o %s_sorted.bam -T %s/%s_temp %s_fixmate.bam' % (config['tools']['samtools'],
-                                                                                  base_file_name,
-                                                                                  config['tmp_dir'],
-                                                                                  sample_id, base_file_name)
-    cmd3 = '%s index %s_sorted.bam' % (config['tools']['samtools'], base_file_name)
+    #cmd1 = '%s fixmate -O bam %s.sam %s_fixmate.bam' % (config['tools']['samtools'], base_file_name, base_file_name)
+    #cmd2 = '%s sort -@ 8 -O bam -o %s_sorted.bam -T %s/%s_temp %s_fixmate.bam' % (config['tools']['samtools'],
+    #                                                                              base_file_name,
+    #                                                                              config['tmp_dir'],
+    #                                                                              sample_id, base_file_name)
+    #cmd3 = '%s index %s_sorted.bam' % (config['tools']['samtools'], base_file_name)
 
-    print()
-    print ("++++++ Samtools Fixmate Command: ", cmd1)
-    os.system(cmd1)
+    samtools_cmd = config['tools']['samtools']
+    fixmate_cmd = [samtools_cmd, "fixmate", "-O", "bam",
+                   "%s.sam" % base_file_name,
+                   "%s_fixmate.bam" % base_file_name]
 
-    print()
-    print ("++++++ Samtools Sort Command: ", cmd2)
-    os.system(cmd2)
+    sort_cmd = [samtools_cmd, "sort", "-@", "8", "-O", "bam",
+                "-o", "%s_sorted.bam" % base_file_name,
+                "-T" "%s/%s_temp" % (config["tmp_dir"], sample_id),
+                "%s_fixmate.bam" % base_file_name]
+    index_cmd = [samtools_cmd, "index", "%s_sorted.bam" % base_file_name]
 
-    print()
-    print ("++++++ Samtools Index Command: ", cmd3)
-    os.system(cmd3)
+
+    print ("++++++ Samtools Fixmate Command: '%s'" % ' '.join(fixmate_cmd))
+    compl_proc = subprocess.run(' '.join(fixmate_cmd), shell=True, capture_output=False, check=True)
+
+    print ("++++++ Samtools Sort Command: '%s'" % " ".join(sort_cmd))
+    compl_proc = subprocess.run(' '.join(sort_cmd), shell=True, capture_output=False, check=True)
+
+    print ("++++++ Samtools Index Command: '%s'" % " ".join(index_cmd))
+    compl_proc = subprocess.run(' '.join(index_cmd), shell=True, capture_output=False, check=True)
 
     # add  temp files to list to delete
     temp_files = ['%s_sorted.bam' % base_file_name, '%s_sorted.bam.bai' % base_file_name, '%s_fixmate.bam' % base_file_name]
@@ -186,7 +196,7 @@ def runMarkDuplicates(alignment_results,exp_name, base_file_name, config):
     # collect list of bwa aligned bam files
     aligned_bams = glob.glob('%s*_sorted.bam' %(base_file_name))
     print('aligned_bams:%s' %(aligned_bams))
-    # creaate command line parameter for each file
+    # create command line parameter for each file
     print( 'Input BWA aligned BAM Files...')
     bamList = []
     for i in aligned_bams:
