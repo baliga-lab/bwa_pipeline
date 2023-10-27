@@ -14,6 +14,7 @@ import subprocess
 from globalsearch.rnaseq.find_files import find_fastq_files
 from samtools import SamTools
 from bcftools import BcfTools
+from varscan import VarScan
 
 
 def run_gatk_create_seq_dict(genome_fasta, config):
@@ -239,32 +240,19 @@ def varscan_variants(alignment_files_path, varscan_results, exp_name, folder_nam
 
     # create varscan results specific results directory
     varscan_files_path = '%s/%s' % (varscan_results, exp_name)
-
-    # varscan for snps
-    cmd2 = '%s mpileup2snp %s.pileup --output-vcf 1 --min-coverage 8 --min-reads2 2 --min-avg-qual 30 --strand-filter 0 > %s_varscan_snps_final.vcf' % (config['tools']['varscan'],
-                                                                                                                                                        varscan_files_path,
-                                                                                                                                                        varscan_files_path)
-    # varscan for indels
-    cmd3 = '%s mpileup2indel %s.pileup --output-vcf 1 --min-coverage 8 --min-reads2 2 --min-avg-qual 30 --strand-filter 0 > %s_varscan_inds_final.vcf' % (config['tools']['varscan'],
-                                                                                                                                                          varscan_files_path,
-                                                                                                                                                          varscan_files_path)
+    pileup_file = "%s.pileup" % varscan_files_path
 
     # samtools mpileup
     samtools = SamTools(config['tools']['samtools'])
     samtools.mpileup(genome_fasta, "%s_marked.bam" % alignment_files_path,
-                     "%s.pileup" % varscan_files_path)
+                     pileup_file)
 
-    print( "++++++ Varscan for SNPs: ", cmd2)
-    os.system(cmd2)
-
-    print()
-    print( "++++++ Varscan for INDELS: ", cmd3)
-    os.system(cmd3)
+    varscan = VarScan(config['tools']['varscan'])
+    varscan.mpileup2snp(pileup_file, '%s_varscan_snps_final.vcf' % varscan_files_path)
+    varscan.mpileup2indel(pileup_file, '%s_varscan_inds_final.vcf' % varscan_files_path)
 
     files_2_delete.append('%s.pileup' % varscan_files_path)
-
     return varscan_files_path
-
 
 
 ####################### GATK Variant Calling ###############################
