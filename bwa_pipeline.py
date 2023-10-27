@@ -13,27 +13,34 @@ import subprocess
 # pattern based FASTQ file discovery
 from globalsearch.rnaseq.find_files import find_fastq_files
 
-
-def create_genome_indexes(genome_fasta, config):
-    # samtools fasta reference file indexing
-    genome_name = genome_fasta.split(".fna")[0]
-    cmd1 = '%s faidx %s' % (config['tools']['samtools'], genome_fasta)
-    cmd2 = '%s CreateSequenceDictionary -R %s' % (config['tools']['gatk'], genome_fasta)
-    bwa_genome_index_cmd = '%s index %s' % (config['tools']['bwa'], genome_fasta)
-
+def run_samtools_faidx(genome_fasta, config):
+    faidx_cmd = [config['tools']['samtools'], 'faidx', genome_fasta]
     if not os.path.exists('%s.fai' % genome_fasta):
-        print ('\033[31m %s.fai  DOES NOT exist, creating. \033[0m' % genome_fasta)
-        os.system(cmd1)
+        print ("\033[31m '%s.fai' DOES NOT exist, creating. \033[0m" % genome_fasta)
+        compl_proc = subprocess.run(' '.join(faidx_cmd), shell=True, capture_output=False, check=True)
     else:
-        print ('\033[31m %s.fai  exists. Not creating. \033[0m' % genome_fasta)
+        print ("\033[31m '%s.fai' exists. Not creating. \033[0m" % genome_fasta)
 
+
+def run_gatk_create_seq_dict(genome_fasta, config):
+    createdict_cmd = [config['tools']['gatk'], "CreateSequenceDictionary",
+                      "-R", genome_fasta]
+    genome_name = genome_fasta.split(".fna")[0]
     if not os.path.exists('%s.dict' % genome_name):
         print ('\033[31m %s.dict  DOES NOT exist, creating. \033[0m' % genome_fasta)
-        os.system(cmd2)
+        compl_proc = subprocess.run(' '.join(createdict_cmd), shell=True, capture_output=False, check=True)
     else:
         print ('\033[31m %s.dict  exists. Not creating. \033[0m' % genome_fasta)
 
-    os.system(bwa_genome_index_cmd)
+def run_bwa_index(genome_fasta, config):
+    index_cmd = [config['tools']['bwa'], 'index', genome_fasta]
+    compl_proc = subprocess.run(' '.join(index_cmd), shell=True, capture_output=False, check=True)
+
+def create_genome_indexes(genome_fasta, config):
+    # samtools fasta reference file indexing
+    run_samtools_faidx(genome_fasta, config)
+    run_gatk_create_seq_dict(genome_fasta, config)
+    run_bwa_index(genome_fasta, config)
 
 ############# Functions ##############
 
