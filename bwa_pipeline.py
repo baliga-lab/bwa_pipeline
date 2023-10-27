@@ -15,17 +15,8 @@ from globalsearch.rnaseq.find_files import find_fastq_files
 from samtools import SamTools
 from bcftools import BcfTools
 from varscan import VarScan
+from gatk import GATK
 
-
-def run_gatk_create_seq_dict(genome_fasta, config):
-    createdict_cmd = [config['tools']['gatk'], "CreateSequenceDictionary",
-                      "-R", genome_fasta]
-    genome_name = genome_fasta.split(".fna")[0]
-    if not os.path.exists('%s.dict' % genome_name):
-        print ('\033[31m %s.dict  DOES NOT exist, creating. \033[0m' % genome_fasta)
-        compl_proc = subprocess.run(' '.join(createdict_cmd), shell=True, capture_output=False, check=True)
-    else:
-        print ('\033[31m %s.dict  exists. Not creating. \033[0m' % genome_fasta)
 
 def run_bwa_index(genome_fasta, config):
     index_cmd = [config['tools']['bwa'], 'index', genome_fasta]
@@ -35,7 +26,10 @@ def create_genome_indexes(genome_fasta, config):
     # samtools fasta reference file indexing
     samtools = SamTools(config['tools']['samtools'])
     samtools.faidx(genome_fasta)
-    run_gatk_create_seq_dict(genome_fasta, config)
+
+    gatk = GATK(config['tools']['gatk'])
+    gatk.create_seq_dict(genome_fasta)
+
     run_bwa_index(genome_fasta, config)
 
 ############# Functions ##############
@@ -150,7 +144,7 @@ def run_samtools_fixmate_step(base_file_name, sample_id, files_2_delete, config)
 
 
 ####################### GATK 1st Pass ###############################
-def runGATK(base_file_name,files_2_delete,exp_name,alignment_results):
+def run_gatk(base_file_name,files_2_delete,exp_name,alignment_results):
     print("\033[34m Running GATK Realigner.. \033[0m")
     #run Target Interval Creater command java -Xmx128m -jar
     #cmd1 = '%s --java-options "-Xmx4g" -T RealignerTargetCreator -R %s -I %s_sorted.bam -o %s.intervals' % (GATK, genome_fasta, base_file_name, base_file_name)
@@ -255,51 +249,37 @@ def varscan_variants(alignment_files_path, varscan_results, exp_name, folder_nam
     return varscan_files_path
 
 
-####################### GATK Variant Calling ###############################
-def gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, config): # with GATK HaploTypeCaller
-    print()
-    print( "\033[34m Running GATK Haplotype Variant Caller.. \033[0m")
-    # create varscan results specific results directory
-    gatk_files_path = '%s/%s'%(gatk_results,exp_name)
+def gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, config):
+    """GATK Variant Calling with HaploTypeCaller"""
 
-    # haplotype command
-    cmd1 = '%s HaplotypeCaller -R %s -I %s_marked.bam -ploidy 1 -stand-call-conf 30 -O %s_gatk_raw.vcf' % (config['tools']['gatk'],
-                                                                                                           genome_fasta, alignment_files_path, gatk_files_path)
-    # Select snp variants
-    cmd2 = '%s SelectVariants -R %s -V %s_gatk_raw.vcf -select-type SNP -O %s_gatk_snps.vcf' % (config['tools']['gatk'],
-                                                                                                genome_fasta, gatk_files_path,gatk_files_path)
-    # Apply filters to SNPs
-    cmd3 = "%s VariantFiltration -R %s -V %s_gatk_snps.vcf --filter-expression 'QD < 2.0 || FS > 60.0 || MQ < 40.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0' --filter-name 'my_snp_filter' -O %s_gatk_snps_filtered.vcf" % (config['tools']['gatk'],
-                                                                                                                                                                                                                                 genome_fasta, gatk_files_path, gatk_files_path)
+    print("\033[34m Running GATK Haplotype Variant Caller.. \033[0m")
+    # create varscan results specific results directory
+    gatk_files_path = '%s/%s' % (gatk_results, exp_name)
+
+    gatk = GATK(config['tools']['gatk'])
+    marked_bam = '%s_marked.bam' % alignment_files_path
+    raw_vcf = '%s_gatk_raw.vcf' % gatk_files_path
+    gatk.haplotype_caller(genome_fasta, marked_bam, raw_vcf)
+
+    # Select SNP variants
+    snp_vcf = '%s_gatk_snps.vcf' % gatk_files_path
+    filtered_snp_vcf = '%s_gatk_snps_filtered.vcf' % gatk_files_path
+    gatk.select_variants(genome_fasta, raw_vcf, snp_vcf, "SNP")
+    gatk.variant_filtration(genome_fasta, snp_vcf, filtered_snp_vcf,
+                            "my_snp_filter",
+                            "QD < 2.0 || FS > 60.0 || MQ < 40.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0")
+
     # Select indel variants
-    cmd4 = '%s SelectVariants -R %s -V %s_gatk_raw.vcf -select-type INDEL -O %s_gatk_inds.vcf' % (config['tools']['gatk'], genome_fasta, gatk_files_path,gatk_files_path)
-    # Apply filters to indels
-    cmd5 = "%s VariantFiltration -R %s -V %s_gatk_inds.vcf --filter-expression 'QD < 2.0 || FS > 200.0 || ReadPosRankSum < -20.0' --filter-name 'my_indel_filter' -O %s_gatk_inds_filtered.vcf" % (config['tools']['gatk'], genome_fasta, gatk_files_path, gatk_files_path)
+    indel_vcf = "%s_gatk_inds.vcf" % gatk_files_path
+    filtered_indel_vcf = "%s_gatk_inds_filtered.vcf" % gatk_files_path
+    gatk.select_variants(genome_fasta, raw_vcf, indel_vcf, "INDEL")
+    gatk.variant_filtration(genome_fasta, indel_vcf, filtered_indel_vcf,
+                            "my_indel_filter",
+                            "QD < 2.0 || FS > 200.0 || ReadPosRankSum < -20.0")
+
     # Merge vcf files
     cmd6 = "%s MergeVcfs I=%s_gatk_snps_filtered.vcf I= %s_gatk_inds_filtered.vcf O=%s_gatk_final.vcf" % (config['tools']['picard'], gatk_files_path, gatk_files_path, gatk_files_path)
-
-    print()
-    print( "++++++ GATK HaplotypeCaller Comnand: ", cmd1)
-    os.system(cmd1)
-
-    print()
-    print( "++++++ Select SNP Variants: ", cmd2)
-    os.system(cmd2)
-
-    print()
-    print( "++++++ Applying filters for SNPs: ", cmd3)
-    os.system(cmd3)
-
-    print()
-    print( "++++++ Select IndelVariants: ", cmd4)
-    os.system(cmd4)
-
-    print()
-    print( "++++++ Applying filters for Indelss: ", cmd5)
-    os.system(cmd5)
-
-    print()
-    print( "++++++ Merging vcf files: ", cmd6)
+    print("++++++ Merging vcf files: ", cmd6)
     os.system(cmd6)
 
     return gatk_files_path
@@ -685,7 +665,7 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     alignment_files_path = mark_duplicates(alignment_results, exp_name, base_file_name, config)
 
     # 0.4 Run GATK 1st PASS
-    #runGATK(base_file_name,files_2_delete,exp_name,alignment_results)
+    #run_gatk(base_file_name,files_2_delete,exp_name,alignment_results)
     # 06. Run Samtools variant calling
     samtools_files_path = bcftools_variants(samtools_results, alignment_files_path, exp_name, folder_name, config)
 
