@@ -13,6 +13,7 @@ import subprocess
 # pattern based FASTQ file discovery
 from globalsearch.rnaseq.find_files import find_fastq_files
 from samtools import SamTools
+from bcftools import BcfTools
 
 
 def run_gatk_create_seq_dict(genome_fasta, config):
@@ -176,8 +177,8 @@ def runGATK(base_file_name,files_2_delete,exp_name,alignment_results):
         files_2_delete.append(temp_file)
 
 
-####################### Mark duplicates with GATK ###############################
-def runMarkDuplicates(alignment_results, exp_name, base_file_name, config):
+def mark_duplicates(alignment_results, exp_name, base_file_name, config):
+    """Mark duplicates with Picard"""
     print("\033[34m Running Mark Duplicates.. \033[0m")
     print("Exp Name:", exp_name)
     # collect list of bwa aligned bam files
@@ -211,47 +212,34 @@ def runMarkDuplicates(alignment_results, exp_name, base_file_name, config):
 
 
 ####################### Samtools Variant Calling ###############################
-def samtools_variants(samtools_results, alignment_files_path, exp_name, folder_name, config):
-    print()
-    print( "\033[34m Running SAMtools Variant Calling.. \033[0m")
+def bcftools_variants(samtools_results, alignment_files_path, exp_name, folder_name, config):
+    print("\033[34m Running bcftools Variant Calling.. \033[0m")
+
     # create samtools results specific results directory
-    samtools_files_path = '%s/%s'%(samtools_results,exp_name)
+    samtools_files_path = '%s/%s' % (samtools_results, exp_name)
 
     # Produce BCF file with all locations in the genome
-    cmd1 = '%s mpileup --threads 16 -Ou -f %s %s_marked.bam | %s call -vmO v --ploidy 1 -o %s_samtools.vcf' % (config['tools']['bcftools'], genome_fasta, alignment_files_path, config['tools']['bcftools'], samtools_files_path)
-    # Prepare vcf file for querying
+    bcftools = BcfTools(config['tools']['bcftools'], config['tools']['tabix'],
+                        config['tools']['bgzip'])
+
+    # Prepare vcf file for querying with tabix. WW: This seems to be incomplete
     #cmd2 = '%s -p vcf %s_samtools.vcf.gz' % (TABIX, samtools_files_path)
-    #Filtering
-    percentageString = "%"
-    cmd3 = "%s filter -O v -o %s_samtools_final.vcf -s LOWQUAL -i 'QUAL>10' %s_samtools.vcf" % (config['tools']['bcftools'],
-                                                                                                samtools_files_path, samtools_files_path)
 
-    print()
-    print( "++++++ Variant Calling mpileup: ", cmd1)
-    os.system(cmd1)
-
-    #print()
-    #print( "++++++ Variant Calling tabix: ", cmd2)
-    #os.system(cmd2)
-
-    print()
-    print( "++++++ Variant Calling filtering: ", cmd3)
-    os.system(cmd3)
-
-    #files_2_delete.append('%s_sorted.bam, %s_sorted.bam.bai, %s_fixmate.bam'%(base_file_name,base_file_name,base_file_name))
+    vcf_path = '%s_samtools.vcf' % samtools_files_path
+    final_vcf_path = '%s_samtools_final.vcf' % samtools_files_path
+    bcftools.variant_calling_mpileup(genome_fasta, '%s_marked.bam' % alignment_files_path,
+                                     vcf_path)
+    bcftools.filter_variants(vcf_path, final_vcf_path)
     return samtools_files_path
 
 
 ####################### Varscan Variant Calling ###############################
 def varscan_variants(alignment_files_path, varscan_results, exp_name, folder_name, files_2_delete, config): # with varscan
-    print()
-    print( "\033[34m Running Varscan.. \033[0m")
-    # create varscan results specific results directory
-    varscan_files_path = '%s/%s'%(varscan_results,exp_name)
+    print("\033[34m Running Varscan.. \033[0m")
 
-    # varscan mpileup
-    cmd1 = '%s mpileup --input-fmt-option nthreads=8 -B -f %s -o %s.pileup %s_marked.bam' % (config['tools']['samtools'],
-                                                                                             genome_fasta, varscan_files_path, alignment_files_path)
+    # create varscan results specific results directory
+    varscan_files_path = '%s/%s' % (varscan_results, exp_name)
+
     # varscan for snps
     cmd2 = '%s mpileup2snp %s.pileup --output-vcf 1 --min-coverage 8 --min-reads2 2 --min-avg-qual 30 --strand-filter 0 > %s_varscan_snps_final.vcf' % (config['tools']['varscan'],
                                                                                                                                                         varscan_files_path,
@@ -261,10 +249,11 @@ def varscan_variants(alignment_files_path, varscan_results, exp_name, folder_nam
                                                                                                                                                           varscan_files_path,
                                                                                                                                                           varscan_files_path)
 
-    print( "++++++ samtools Mpileup: ", cmd1)
-    os.system(cmd1)
+    # samtools mpileup
+    samtools = SamTools(config['tools']['samtools'])
+    samtools.mpileup(genome_fasta, "%s_marked.bam" % alignment_files_path,
+                     "%s.pileup" % varscan_files_path)
 
-    print()
     print( "++++++ Varscan for SNPs: ", cmd2)
     os.system(cmd2)
 
@@ -705,12 +694,12 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
 
     # 05. Run Mark duplicates
     # WW: base_file_name is dependent on the loop to be run, does that make any sense ?
-    alignment_files_path = runMarkDuplicates(alignment_results, exp_name, base_file_name, config)
+    alignment_files_path = mark_duplicates(alignment_results, exp_name, base_file_name, config)
 
     # 0.4 Run GATK 1st PASS
     #runGATK(base_file_name,files_2_delete,exp_name,alignment_results)
     # 06. Run Samtools variant calling
-    samtools_files_path = samtools_variants(samtools_results, alignment_files_path, exp_name, folder_name, config)
+    samtools_files_path = bcftools_variants(samtools_results, alignment_files_path, exp_name, folder_name, config)
 
     # 07. Run varscan variant calling
     varscan_files_path = varscan_variants(alignment_files_path, varscan_results, exp_name,
