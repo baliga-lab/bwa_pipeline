@@ -16,6 +16,7 @@ from samtools import SamTools
 from bcftools import BcfTools
 from varscan import VarScan
 from gatk import GATK
+from snpeff import SnpEff
 
 
 def run_bwa_index(genome_fasta, config):
@@ -286,11 +287,10 @@ def gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, con
 
 
 ####################### Run SNPEff annotations ###############################
-def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combined_variants, exp_name, config):
-    print()
-    print( "\033[34m Running SNPEff Annotations.. \033[0m")
+def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combined_variants, exp_name,
+               snpeff_db, config):
+    print("\033[34m Running SNPEff Annotations.. \033[0m")
 
-    #vcf_files = ['%s_varscan_inds_final.vcf'%(varscan_files_path), '%s_varscan_snps_final.vcf'%(varscan_files_path), '%s_gatk_final.vcf'%(gatk_files_path)]
     vcf_files = ['%s_samtools_final.vcf' % samtools_files_path,
                  '%s_varscan_inds_final.vcf' % varscan_files_path,
                  '%s_varscan_snps_final.vcf' % varscan_files_path,
@@ -335,7 +335,6 @@ def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combine
 
             bcft_cmd1 = '%s annotate --rename-chrs %s/chrom_names.txt %s > %s' % (config['tools']['bcftools'],
                                                                                   genome_dir,vcf_file,vcf_file_renamed)
-            print()
             print("Renaming chromosomes for snpEFF with bcftools:" + bcft_cmd1)
             os.system(bcft_cmd1)
 
@@ -345,7 +344,6 @@ def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combine
             print("vcf_file_renamed: " + vcf_file_renamed)
 
             vcf_file_bgzip = re.split('final.', vcf_file)[0] + 'renamed.' + re.split('final.', vcf_file)[1] + ".bgz"
-
 
             # gzip and index vcf file with tabix
             bgzip_cmd1 = '%s -c %s > %s' % (config['tools']['bgzip'], vcf_file, vcf_file_bgzip)
@@ -357,7 +355,6 @@ def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combine
             bcft_cmd1 = '%s annotate --rename-chrs %s/chrom_names.txt %s > %s' % (config['tools']['bcftools'],
                                                                                   genome_dir,
                                                                                   vcf_file_bgzip, vcf_file_renamed)
-            print()
             print("Renaming chromosomes for snpEFF with bcftools:" + bcft_cmd1)
             os.system(bcft_cmd1)
 
@@ -377,9 +374,12 @@ def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combine
         snpeff_stats = re.split('final.', vcf_file)[0] + 'snpeff_stats.txt'
         snpeff_final = re.split('final.', vcf_file)[0] + 'snpeff_final.txt'
 
+        snpeff = SnpEff(config['tools']['snpeff'])
+
         # snpeff formateff commands
-        cmd1 ='%s -ud 0 -classic -csvStats %s -geneId -lof -v -formatEff -o gatk %s %s > %s' % (config['tools']['snpeff'],
-                                                                                                snpeff_stats, snpeff_db, vcf_file_renamed, snpeff_vcf)
+        #cmd1 ='%s -ud 0 -classic -csvStats %s -geneId -lof -v -formatEff -o gatk %s %s > %s' % (config['tools']['snpeff'],
+        #                                                                                        snpeff_stats, snpeff_db, vcf_file_renamed, snpeff_vcf)
+
         # snpeff filtering command
         cmd2 = 'cat %s | %s filter -p "((FILTER = \'PASS\') & (EFF[*].CODING != \'NON_CODING\'))" > %s' % (snpeff_vcf,
                                                                                                            config['tools']['snpsift'],
@@ -390,21 +390,17 @@ def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combine
                                                                                                                                                                                                                                                                         config['tools']['snpsift'],
                                                                                                                                                                                                                                                                         snpeff_final)
 
-        print()
-        print( "++++++ Running SNPEff Formateff command: ", cmd1)
-        os.system(cmd1)
+        # Run the snpEff commands
+        snpeff.format_eff(snpeff_stats, snpeff_db, vcf_file_renamed, snpeff_vcf)
 
-        print()
         print( "++++++ Running SNPEff Filtering: ", cmd2)
         os.system(cmd2)
 
-        print()
         print( "++++++ Running SNPEff Oneline final formatter: ", cmd3)
         os.system(cmd3)
         #sys.exit()
 
         # Run function to combine vcf files into a single file from 3 callers
-        print()
         combine_variants(snpeff_filtered_vcf, snpeff_final, combined_variants, run_snpeff.t)
     run_snpeff.t.close()
 
@@ -577,8 +573,6 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
 
     # Get the folder name
     folder_name = data_folder.split('/')[-1]
-    print()
-    print()
     print( '\033[33mProcessing Folder: %s \033[0m' % folder_name)
 
     # get the list of first file names in paired end sequences
@@ -676,7 +670,8 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     gatk_files_path = gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, config)
 
     # 09. Run SNPEff annotations
-    vcf_file = run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combined_variants, exp_name, config)
+    vcf_file = run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combined_variants, exp_name,
+                          snpeff_db, config)
     # 10. Collate variants into single file from 3 callers and unify them
     collate_variants(combined_output_file,merged_variants_file)
     # 11. Delete temporary files_2_delete
