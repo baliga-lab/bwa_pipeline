@@ -2,9 +2,6 @@
 
 # Description
 
-This is a genomics pipeline for analyzing RNA sequencing data using
-the BWA alignment tool.
-
 ![Workflow](images/workflow.svg)
 
 # Dependencies
