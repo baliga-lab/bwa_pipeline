@@ -374,16 +374,17 @@ def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combine
         snpeff_stats = re.split('final.', vcf_file)[0] + 'snpeff_stats.txt'
         snpeff_final = re.split('final.', vcf_file)[0] + 'snpeff_final.txt'
 
-        snpeff = SnpEff(config['tools']['snpeff'])
+        snpeff = SnpEff(config['tools']['snpeff'], config['tools']['snpsift'])
 
         # snpeff formateff commands
         #cmd1 ='%s -ud 0 -classic -csvStats %s -geneId -lof -v -formatEff -o gatk %s %s > %s' % (config['tools']['snpeff'],
         #                                                                                        snpeff_stats, snpeff_db, vcf_file_renamed, snpeff_vcf)
 
         # snpeff filtering command
-        cmd2 = 'cat %s | %s filter -p "((FILTER = \'PASS\') & (EFF[*].CODING != \'NON_CODING\'))" > %s' % (snpeff_vcf,
-                                                                                                           config['tools']['snpsift'],
-                                                                                                           snpeff_filtered_vcf)
+        #cmd2 = 'cat %s | %s filter -p "((FILTER = \'PASS\') & (EFF[*].CODING != \'NON_CODING\'))" > %s' % (snpeff_vcf,
+        #                                                                                                   config['tools']['snpsift'],
+        #                                                                                                   snpeff_filtered_vcf)
+
         # create final one line variant file
         cmd3 ='cat %s | %s | %s extractFields - CHROM POS REF ALT AF AC DP MQ "(FILTER = \'PASS\')" "EFF[*].EFFECT" "EFF[*].IMPACT" "EFF[*].FUNCLASS" "EFF[*].CODON" "EFF[*].AA" "EFF[*].AA_LEN" "EFF[*].GENE" "EFF[*].CODING" "EFF[*].RANK" "EFF[*].DISTANCE" > %s' % (snpeff_filtered_vcf,
                                                                                                                                                                                                                                                                         config['tools']['vceff_opl'],
@@ -392,9 +393,8 @@ def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combine
 
         # Run the snpEff commands
         snpeff.format_eff(snpeff_stats, snpeff_db, vcf_file_renamed, snpeff_vcf)
-
-        print( "++++++ Running SNPEff Filtering: ", cmd2)
-        os.system(cmd2)
+        snpeff.snpsift_filter(snpeff_vcf, snpeff_filtered_vcf,
+                              "((FILTER = \'PASS\') & (EFF[*].CODING != \'NON_CODING\'))")
 
         print( "++++++ Running SNPEff Oneline final formatter: ", cmd3)
         os.system(cmd3)
