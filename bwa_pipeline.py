@@ -22,6 +22,29 @@ def run_samtools_faidx(genome_fasta, config):
         print ("\033[31m '%s.fai' exists. Not creating. \033[0m" % genome_fasta)
 
 
+def run_samtools_index(infile, config):
+    """run the samtools index command"""
+    index_cmd = [config['tools']['samtools'], "index", infile]
+    print ("++++++ Samtools Index Command: '%s'" % " ".join(index_cmd))
+    compl_proc = subprocess.run(' '.join(index_cmd), shell=True, capture_output=False, check=True)
+
+
+def run_samtools_fixmate(infile, outfile, config, out_format="bam"):
+    fixmate_cmd = [config['tools']['samtools'], "fixmate",
+                   "-O", out_format, infile, outfile]
+    print ("++++++ Samtools Fixmate Command: '%s'" % ' '.join(fixmate_cmd))
+    compl_proc = subprocess.run(' '.join(fixmate_cmd), shell=True, capture_output=False, check=True)
+
+
+def run_samtools_sort(infile, outfile, tmp_prefix, config,
+                      num_threads=8, out_format="bam"):
+    sort_cmd = [config['tools']['samtools'], "sort",
+                "-@", str(num_threads), "-O", out_format,
+                "-o", outfile, "-T", tmp_prefix, infile]
+    print ("++++++ Samtools Sort Command: '%s'" % " ".join(sort_cmd))
+    compl_proc = subprocess.run(' '.join(sort_cmd), shell=True, capture_output=False, check=True)
+
+
 def run_gatk_create_seq_dict(genome_fasta, config):
     createdict_cmd = [config['tools']['gatk'], "CreateSequenceDictionary",
                       "-R", genome_fasta]
@@ -140,34 +163,17 @@ def run_bwa_alignment(alignment_results, file_ext, first_file_name, second_file_
     return base_file_name
 
 
-####################### samtools fixmate, sort and index to cleanup read pair info and flags ###############################
-def run_samtools_fixmate(base_file_name, sample_id, files_2_delete, config):
-    print( "\033[34m Running SAMtools fixmate... \033[0m")
-    samtools_cmd = config['tools']['samtools']
-    fixmate_cmd = [samtools_cmd, "fixmate", "-O", "bam",
-                   "%s.sam" % base_file_name,
-                   "%s_fixmate.bam" % base_file_name]
+def run_samtools_fixmate_step(base_file_name, sample_id, files_2_delete, config):
+    """samtools fixmate, sort and index to cleanup read pair info and flags"""
+    print( "\033[34m Running SAMtools fixmate step... \033[0m")
+    sorted_bam = "%s_sorted.bam" % base_file_name
+    fixmate_bam = "%s_fixmate.bam" % base_file_name
 
-    sort_cmd = [samtools_cmd, "sort", "-@", "8", "-O", "bam",
-                "-o", "%s_sorted.bam" % base_file_name,
-                "-T" "%s/%s_temp" % (config["tmp_dir"], sample_id),
-                "%s_fixmate.bam" % base_file_name]
-    index_cmd = [samtools_cmd, "index", "%s_sorted.bam" % base_file_name]
-
-
-    print ("++++++ Samtools Fixmate Command: '%s'" % ' '.join(fixmate_cmd))
-    compl_proc = subprocess.run(' '.join(fixmate_cmd), shell=True, capture_output=False, check=True)
-
-    print ("++++++ Samtools Sort Command: '%s'" % " ".join(sort_cmd))
-    compl_proc = subprocess.run(' '.join(sort_cmd), shell=True, capture_output=False, check=True)
-
-    print ("++++++ Samtools Index Command: '%s'" % " ".join(index_cmd))
-    compl_proc = subprocess.run(' '.join(index_cmd), shell=True, capture_output=False, check=True)
-
-    # add  temp files to list to delete
-    temp_files = ['%s_sorted.bam' % base_file_name, '%s_sorted.bam.bai' % base_file_name, '%s_fixmate.bam' % base_file_name]
-    for temp_file in temp_files:
-        files_2_delete.append(temp_file)
+    run_samtools_fixmate("%s.sam" % base_file_name, fixmate_bam, config)
+    run_samtools_sort(fixmate_bam, sorted_bam, "%s/%s_temp" % (config["tmp_dir"], sample_id),
+                      config)
+    run_samtools_index(sorted_bam, config)
+    files_2_delete.extend([fixmate_bam, sorted_bam, '%s_sorted.bam.bai' % base_file_name])
 
 
 ####################### GATK 1st Pass ###############################
@@ -227,9 +233,7 @@ def runMarkDuplicates(alignment_results, exp_name, base_file_name, config):
     compl_proc = subprocess.run(' '.join(markdup_cmd), shell=True, capture_output=False, check=True)
 
     # index BAM file with Samtools
-    index_cmd = [config['tools']['samtools'], "index", marked_bam_name]
-    print( "++++++ Index bamfile Command: '%s'... " % ' '.join(index_cmd))
-    compl_proc = subprocess.run(' '.join(index_cmd), shell=True, capture_output=False, check=True)
+    run_samtools_index(marked_bam_name, config)
 
     return alignment_files_path
 
@@ -719,12 +723,12 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
 
         # 02. Run bwa alignment to produce SAM file.
         base_file_name = run_bwa_alignment(alignment_results, file_ext, first_file_name,
-                                            second_file_name, lane,folder_name, sample_id,
-                                            RGId, RGSm, RGLb, RGPu, files_2_delete,
-                                            data_trimmed_dir, genome_fasta, config)
+                                           second_file_name, lane,folder_name, sample_id,
+                                           RGId, RGSm, RGLb, RGPu, files_2_delete,
+                                           data_trimmed_dir, genome_fasta, config)
 
         # 03. Run samtools fixmate
-        run_samtools_fixmate(base_file_name,sample_id,files_2_delete, config)
+        run_samtools_fixmate_step(base_file_name, sample_id,files_2_delete, config)
         file_count += 1
 
     # 05. Run Mark duplicates
