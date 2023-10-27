@@ -61,29 +61,41 @@ def create_dirs(samtools_results, gatk_results, varscan_results, data_trimmed_di
 
 
 ####################### Trimgalore for quality and trimming ###############################
-def trimgalore(first_pair_file, second_pair_file, folder_name, sample_id, file_ext,
-               data_trimmed_dir):
+
+def run_trim_galore_single(fastqc_dir, data_trimmed_dir, fastq_file, config):
+    print("\033[34m Running trim_galore (SINGLE) \033[0m")
+    cmd = [config["tools"]["trim_galore"],
+           "--fastqc_args", "\"--outdir %s\"" % fastqc_dir,  # FastQC argument
+           "--output_dir", data_trimmed_dir,
+           fastq_file]
+    compl_proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False, check=True)
+
+
+def run_trim_galore_paired(fastqc_dir, data_trimmed_dir, first_pair_file,
+                           second_pair_file, config):
+    print("\033[34m Running TrimGalore (PAIRED-END) \033[0m")
+    cmd = [config["tools"]["trim_galore"],
+           "--fastqc_args", "\"--outdir %s\"" % fastqc_dir,  # FastQC argument
+           "--paired",
+           "--output_dir", data_trimmed_dir,
+           first_pair_file, second_pair_file]
+    compl_proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False, check=True)
+
+
+def trim_galore(first_pair_file, second_pair_file, folder_name, sample_id, file_ext,
+               data_trimmed_dir, fastqc_dir, config):
+    """run trim_galore with single/paired end selection and FastQC"""
     if second_pair_file is None:  # single
-        print("\033[34m Running TrimGalore (SINGLE) \033[0m")
-        cmd = 'trim_galore --fastqc_args "--outdir %s" --output_dir %s %s' % (fastqc_dir,
-                                                                              data_trimmed_dir,
-                                                                              first_pair_file)
+        run_trim_galore_single(fastqc_dir, data_trimmed_dir, first_pair_file, config)
     else:  # paired-end
-        print("\033[34m Running TrimGalore (PAIRED) \033[0m")
-        cmd = 'trim_galore --fastqc_args "--outdir %s" --paired --output_dir %s %s %s' % (fastqc_dir,
-                                                                                          data_trimmed_dir,
-                                                                                          first_pair_file,
-                                                                                          second_pair_file)
+        run_trim_galore_paired(fastqc_dir, data_trimmed_dir, first_pair_file,
+                               second_pair_file, config)
 
-    print ('++++++ Trimgalore Command:', cmd)
-    os.system(cmd)
 
-####################### BWA for alignment ###############################
-def runBWA(alignment_results, file_ext, first_file_name, second_file_name, lane,
-           folder_name, sample_id, RGId, RGSm, RGLb, RGPu, files_2_delete,
-           data_trimmed_dir,
-           genome_fasta,
-           config):
+def run_bwa_alignment(alignment_results, file_ext, first_file_name, second_file_name, lane,
+                      folder_name, sample_id, RGId, RGSm, RGLb, RGPu, files_2_delete,
+                      data_trimmed_dir, genome_fasta, config):
+    """Run BWA for alignment"""
     print ("\033[34m Running BWA alignment... \033[0m")
 
     # define result files
@@ -701,15 +713,15 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
         # create genome indexes
         create_genome_indexes(genome_fasta, config)
 
-        # 01. Run TrimGalore
-        trimgalore(first_pair_file, second_pair_file, folder_name, sample_id, file_ext,
-                   data_trimmed_dir)
+        # 01. Run trim_galore + FastQC
+        trim_galore(first_pair_file, second_pair_file, folder_name, sample_id, file_ext,
+                    data_trimmed_dir, fastqc_dir, config)
 
         # 02. Run bwa alignment to produce SAM file.
-        base_file_name = runBWA(alignment_results, file_ext, first_file_name,
-                                second_file_name, lane,folder_name, sample_id,
-                                RGId, RGSm, RGLb, RGPu, files_2_delete,
-                                data_trimmed_dir, genome_fasta, config)
+        base_file_name = run_bwa_alignment(alignment_results, file_ext, first_file_name,
+                                            second_file_name, lane,folder_name, sample_id,
+                                            RGId, RGSm, RGLb, RGPu, files_2_delete,
+                                            data_trimmed_dir, genome_fasta, config)
 
         # 03. Run samtools fixmate
         run_samtools_fixmate(base_file_name,sample_id,files_2_delete, config)
