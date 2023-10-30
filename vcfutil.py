@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-
 import os
 import gzip
+
 
 def is_file_empty(path):
     if path.endswith('.gz'):
@@ -11,6 +11,7 @@ def is_file_empty(path):
             return len(line) == 0
     else:
         return os.stat(path).st_size == 0
+
 
 def vcfopen(path):
     return gzip.open(path, 'rt') if path.endswith('.gz') else open(path)
@@ -63,6 +64,7 @@ def _get_frequency_from_line(line, vcf_file_program):
         freq = ''
     return freq
 
+
 def get_frequencies(snpeff_filtered_vcf, vcf_file_program):
 
     if is_file_empty(snpeff_filtered_vcf):
@@ -90,10 +92,11 @@ def get_frequencies(snpeff_filtered_vcf, vcf_file_program):
         print( 'Length of Frequencies= '+ str(len(frequencies)))
     return frequencies
 
-####################### Combine variants from snpeff outputs ###############################
 def combine_variants(snpeff_filtered_vcf, snpeff_final, combined_variants, runstats_outfile):
     """
-    snpeff_filtered_vcf: input VCF file
+    Combine variants from snpeff outputs.
+
+    @param snpeff_filtered_vcf input VCF file
     """
     print( "\033[34m Running Combine variants.. \033[0m")
 
@@ -152,13 +155,3 @@ def combine_variants(snpeff_filtered_vcf, snpeff_final, combined_variants, runst
     if runstats_outfile is not None:
         for element in myList:
             runstats_outfile.write('%s' %element)
-
-
-#SNPEFF_FILTERED_VCF = 'vcf_testdata/cmyc_L1_samtools_snpeff_filtered.vcf.gz'
-SNPEFF_FILTERED_VCF = 'vcf_testdata/snps.vcf.gz'
-#SNPEFF_FILTERED_VCF = 'vcf_testdata/empty.vcf.gz'
-SNPEFF_FINAL = 'vcf_testdata/cmyc_L1_samtools_snpeff_final.txt'
-COMBINED_VARIANTS = 'vcf_testdata/combined_variants'
-
-if __name__ == '__main__':
-    combine_variants(SNPEFF_FILTERED_VCF, SNPEFF_FINAL, COMBINED_VARIANTS, None)

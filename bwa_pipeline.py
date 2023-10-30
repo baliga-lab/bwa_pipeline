@@ -516,7 +516,6 @@ def variantRetriever(combined_output_file):
 
 ####################### Collate variants ###############################
 def collate_variants(combined_output_file,merged_variants_file):
-    print
     print( "\033[34m Running Collate variants.. \033[0m")
 
     # 2. recovering list of variants
@@ -530,19 +529,15 @@ def collate_variants(combined_output_file,merged_variants_file):
 
     # 4. writing a consensus list
     print( 'writing file...')
-    #print(merged_variants_file)
 
-    g = open(merged_variants_file, 'w')
-    g.write('CHROM\tPOS\t1ST_REF_BASE\tALT\tCHANGE\tEFFECT\tIMPACT\tCLASS\tCODON\tAA_CHANGE\tGENE\tCODING\tSAMTOOLS_FREQ\tVARIANT_CALLERS\tVARIANT_FREQS\tVARIANT_READS\tFREQ\tF1\n')
-    for element in consensus_list:
-        line2write='\t'.join(element)
-        line2write=line2write+'\n'
-        g.write(line2write)
-    g.close()
-    #return collate_variants.combined_output_file
+    with open(merged_variants_file, 'w') as g:
+        g.write('CHROM\tPOS\t1ST_REF_BASE\tALT\tCHANGE\tEFFECT\tIMPACT\tCLASS\tCODON\tAA_CHANGE\tGENE\tCODING\tSAMTOOLS_FREQ\tVARIANT_CALLERS\tVARIANT_FREQS\tVARIANT_READS\tFREQ\tF1\n')
+        for element in consensus_list:
+            line2write='\t'.join(element)
+            line2write=line2write+'\n'
+            g.write(line2write)
 
 
-####################### Delete temporary files ###############################
 def delete_temp_files(files_2_delete):
     print
     print( "\033[34m Deleting Temporry files.. \033[0m")
@@ -551,9 +546,6 @@ def delete_temp_files(files_2_delete):
         print(cmd)
         #os.system(cmd)
 
-####################### Running the Pipeline ###############################
-#PATTERNS = ["*_R{{readnum}}_001.fastq*"]
-#PATTERNS = ["*.fastq"]
 
 def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, config):
     print("run_pipeline()")
