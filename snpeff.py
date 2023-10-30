@@ -10,17 +10,16 @@ import subprocess
 class SnpEff:
     """This interface was created based on snpEff 5.1d"""
 
-    def __init__(self, snpeff, snpsift):
+    def __init__(self, snpeff, snpsift, vceff_opl):
         """Constructor.
         @param cmd_path path to the samtools command
         """
         self.snpeff = snpeff
         self.snpsift = snpsift
+        self.vceff_opl = vceff_opl
 
     def format_eff(self, stats_file, snpeff_db, infile, outfile,
                    output_format="gatk"):
-        #cmd1 ='%s -ud 0 -classic -csvStats %s -geneId -lof -v -formatEff -o gatk %s %s > %s' % (config['tools']['snpeff'],
-        #                                                                                        snpeff_stats, snpeff_db, vcf_file_renamed, snpeff_vcf)
         cmd = [self.snpeff, "-ud", "0", "-classic",
                "-csvStats", stats_file,
                "-geneId", "-lof", "-v",
@@ -30,11 +29,21 @@ class SnpEff:
         compl_proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False, check=True)
 
     def snpsift_filter(self, infile, outfile, filter_params):
-        #cmd2 = 'cat %s | %s filter -p "((FILTER = \'PASS\') & (EFF[*].CODING != \'NON_CODING\'))" > %s' % (snpeff_vcf,
-        #                                                                                                   config['tools']['snpsift'],
-        #                                                                                                   snpeff_filtered_vcf)
         cmd = ["cat", infile, "|", self.snpsift, "filter",
                "-p", "\"%s\"" % filter_params,
                ">", outfile]
         print("++++++ Running SNPEff Filtering: '%s'" % ' '.join(cmd))
+        compl_proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False, check=True)
+
+    def vceff_opl_extract_fields(self, infile, outfile, fields):
+        """
+        executes vcfeff_opl | snpeff extractFields
+        The fields parameter is very flexible and needs to be properly double
+        quoted to avoid shell expansion
+        """
+        cmd = ["cat", infile, "|", self.vceff_opl, "|", self.snpsift,
+               "extractFields", "-",  # snpsift takes input from from stdin
+               " ".join(fields),
+               ">", outfile]
+        print( "++++++ Running SNPEff Oneline final formatter: '%s'" % ' '.join(cmd))
         compl_proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False, check=True)
