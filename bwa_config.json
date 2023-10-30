@@ -17,7 +17,7 @@
 	"vceff_opl": "perl /snpEff/scripts/vcfEffOnePerLine.pl"
 
     },
-    "fastq_patterns": ["*.fastq"],
+    "fastq_patterns": ["*_{{readnum}}.fastq"],
     "tmp_dir": "/bwa_tmp",
     "organisms": {
 	    "mmp": { "snpeff_db": "Methanococcus_maripaludis_s2" },
