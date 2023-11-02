@@ -142,6 +142,7 @@ def run_samtools_fixmate_step(base_file_name, sample_id, files_2_delete, config)
     samtools.sort(fixmate_bam, sorted_bam, "%s/%s_temp" % (config["tmp_dir"], sample_id))
     samtools.index(sorted_bam)
     files_2_delete.extend([fixmate_bam, sorted_bam, '%s_sorted.bam.bai' % base_file_name])
+    return sorted_bam
 
 
 ####################### GATK 1st Pass ###############################
@@ -547,6 +548,20 @@ def delete_temp_files(files_2_delete):
         #os.system(cmd)
 
 
+def run_tbprofiler(sorted_bam_file, sample_id, result_dir, config):
+    """tb-profiler profile --bam ERR2652935.sralite.1_1_sorted.bam --dir tbprofileout --prefix ERR2652935 --csv"""
+    # activate TBProfiler environment
+    profile_cmd = [
+        # we have to run tb profiler in a separate conda environment !!!
+        "conda", "run", "-n", config["tbprofiler_env"], "--live-stream",
+        config["tools"]["tbprofiler"], "profile", "--bam", sorted_bam_file,
+        "--dir", result_dir,
+        "--prefix", sample_id, "--csv"]
+    print("Running TBprofiler command: '%s'" % " ".join(profile_cmd))
+    compl_proc = subprocess.run(" ".join(profile_cmd),
+                                shell=True, capture_output=False, check=True)
+
+
 def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, config):
     print("run_pipeline()")
     # retrieve list of pairs. paired end data has both elements set,
@@ -581,6 +596,7 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     varscan_results = os.path.join(folder_results_dir, "varscan_results")
     alignment_results = os.path.join(folder_results_dir, "alignment_results")
     combined_variants = os.path.join(folder_results_dir, "combined_variants")
+    tbprofiler_results = os.path.join(folder_results_dir, "tbprofiler")
 
     # final results files
     combined_output_file = os.path.join(combined_variants, '%s_combined_variants.txt' % folder_name)
@@ -637,14 +653,18 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
                                            data_trimmed_dir, genome_fasta, config)
 
         # 03. Run samtools fixmate
-        run_samtools_fixmate_step(base_file_name, sample_id,files_2_delete, config)
+        sorted_bam_file = run_samtools_fixmate_step(base_file_name, sample_id,files_2_delete, config)
+
+        # 03b. Run TB Profiler on the sorted bam file
+        run_tbprofiler(sorted_bam_file, sample_id, tbprofiler_results, config)
+
         file_count += 1
 
     # 05. Run Mark duplicates
     # WW: base_file_name is dependent on the loop to be run, does that make any sense ?
     alignment_files_path = mark_duplicates(alignment_results, exp_name, base_file_name, config)
 
-    # 0.4 Run GATK 1st PASS
+    # 04. Run GATK 1st PASS
     #run_gatk(base_file_name,files_2_delete,exp_name,alignment_results)
     # 06. Run Samtools variant calling
     samtools_files_path = bcftools_variants(samtools_results, alignment_files_path, exp_name, folder_name, config)
@@ -660,6 +680,7 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
                           snpeff_db, config)
     # 10. Collate variants into single file from 3 callers and unify them
     collate_variants(combined_output_file,merged_variants_file)
+
     # 11. Delete temporary files_2_delete
     #delete_temp_files(files_2_delete)
     folder_count += 1

@@ -2,6 +2,7 @@
     "run_dir": "/bwa_pipeline",
     "data_dir": "/bwa_data",
     "result_dir": "/bwa_results",
+    "tbprofiler_env": "TBprofiler2",
     "tools": {
 	"snpeff": "java -Xmx8G -jar /snpEff/snpEff.jar",
 	"snpsift": "java -Xmx8g -jar /snpEff/SnpSift.jar",
@@ -14,8 +15,8 @@
 	"tabix": "tabix",
 	"bgzip": "bgzip",
 	"trim_galore": "trim_galore",
-	"vceff_opl": "perl /snpEff/scripts/vcfEffOnePerLine.pl"
-
+	"vceff_opl": "perl /snpEff/scripts/vcfEffOnePerLine.pl",
+        "tbprofiler": "tb-profiler"
     },
     "fastq_patterns": ["*_{{readnum}}.fastq"],
     "tmp_dir": "/bwa_tmp",

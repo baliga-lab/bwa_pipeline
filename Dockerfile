@@ -62,6 +62,10 @@ RUN conda install -c bioconda fastqc
 # Boto3 for AWS integration
 RUN conda install -y boto3
 
+# SRA Tools for FASTQ conversion
+RUN conda install -y -c bioconda sra-tools
+
+
 WORKDIR /
 RUN wget https://github.com/FelixKrueger/TrimGalore/archive/0.6.10.tar.gz -O trim_galore.tar.gz
 RUN tar xvzf trim_galore.tar.gz
@@ -74,9 +78,23 @@ RUN mkdir -p /bwa_data
 RUN mkdir -p /bwa_results
 RUN mkdir -p /bwa_tmp
 
+# TB Profiler:
+# Installed in its own environment since it uses dependencies that
+# are incompatible with the ones in here, most prominently it depends on samtools 1.12
+#
+# NOTE That in order to use this, we need to
+# $ conda activate TBprofiler2
+# $ tb-profiler
+# in python.subprocess, conda activate does not without an interactive shell !!!
+# So use conda run -n TBprofiler2 --live-stream tb-profiler ...
+WORKDIR /
+RUN wget https://networks.systemsbiology.net/downloads/tbp_v4.3.0_linux.txt
+RUN conda create --name TBprofiler2 --file tbp_v4.3.0_linux.txt
+
+
 # Install pipeline software and data
 RUN git clone https://github.com/baliga-lab/bwa_pipeline.git
 WORKDIR /bwa_pipeline
 RUN wget https://networks.systemsbiology.net/downloads/bwa_mtb_reference_genome-20231027.tar.gz
-RUN tar xvf bwa_mtb_reference_genome-20231026.tar.gz
-RUN rm bwa_mtb_reference_genome-20231026.tar.gz
+RUN tar xvf bwa_mtb_reference_genome-20231027.tar.gz
+RUN rm bwa_mtb_reference_genome-20231027.tar.gz
