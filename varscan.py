@@ -24,7 +24,8 @@ class VarScan:
         cmd = [self.cmd, "mpileup2snp", infile,
                "--output-vcf", "1", "--min-coverage", "8",
                "--min-reads2", "2", "--min-avg-qual", "30",
-               "--strand-filter", "0", ">",
+               "--min-var-freq", "0.01",
+               "--strand-filter", "1", ">",
                outfile]
         print("++++++ Varscan for SNPs: '%s'" % ' '.join(cmd))
         compl_proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False, check=True)
@@ -37,7 +38,8 @@ class VarScan:
         cmd = [self.cmd, "mpileup2indel", infile,
                "--output-vcf", "1", "--min-coverage", "8",
                "--min-reads2", "2", "--min-avg-qual", "30",
-               "--strand-filter", "0", ">",
+               "--min-var-freq", "0.01",
+               "--strand-filter", "1", ">",
                outfile]
         print("++++++ Varscan for INDELS: '%s'" % ' '.join(cmd))
         compl_proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False, check=True)

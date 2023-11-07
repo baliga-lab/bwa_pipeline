@@ -95,6 +95,6 @@ RUN conda create --name TBprofiler2 --file tbp_v4.3.0_linux.txt
 # Install pipeline software and data
 RUN git clone https://github.com/baliga-lab/bwa_pipeline.git
 WORKDIR /bwa_pipeline
-RUN wget https://networks.systemsbiology.net/downloads/bwa_mtb_reference_genome-20231027.tar.gz
-RUN tar xvf bwa_mtb_reference_genome-20231027.tar.gz
-RUN rm bwa_mtb_reference_genome-20231027.tar.gz
+RUN wget https://networks.systemsbiology.net/downloads/bwa_mtb_reference_genome-20231107.tar.gz
+RUN tar xvf bwa_mtb_reference_genome-20231107.tar.gz
+RUN rm bwa_mtb_reference_genome-20231107.tar.gz
