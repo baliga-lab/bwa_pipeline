@@ -18,7 +18,10 @@ class GATK:
 
     def create_seq_dict(self, genome_fasta):
         createdict_cmd = [self.cmd, "CreateSequenceDictionary", "-R", genome_fasta]
-        genome_name = genome_fasta.split(".fna")[0]
+        # make the dict file name
+        genome_name = genome_fasta.replace(".fna", "").replace(".fasta", "")
+        #genome_name = genome_fasta.split(".fna")[0]
+        #genome_name = genome_fasta.split(".fna")[0]
         if not os.path.exists('%s.dict' % genome_name):
             print ('\033[31m %s.dict  DOES NOT exist, creating. \033[0m' % genome_fasta)
             compl_proc = subprocess.run(' '.join(createdict_cmd), shell=True, capture_output=False, check=True)

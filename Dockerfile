@@ -63,7 +63,8 @@ RUN conda install -c bioconda fastqc
 RUN conda install -y boto3
 
 # SRA Tools for FASTQ conversion
-RUN conda install -y -c bioconda sra-tools
+RUN conda install -y -c conda-forge ossuuid
+RUN conda install -y -c bioconda sra-tools=3.0.8
 
 
 WORKDIR /
