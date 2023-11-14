@@ -23,5 +23,5 @@ if __name__ == '__main__':
     try:
         print(download_map[args.sample_id])
     except:
-        raise
+        print("could not find url for sample '%s'" % args.sample_id)
         exit(1)
