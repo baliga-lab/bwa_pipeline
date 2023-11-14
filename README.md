@@ -22,6 +22,6 @@ Edit bwa_config.json for the paths to your data, results and tools.
 Then execute
 
 ```shell
-$ ./bwa_pipeline.py <directory in data_dir>
+./bwa_pipeline.py <directory in data_dir>
 ```
 
