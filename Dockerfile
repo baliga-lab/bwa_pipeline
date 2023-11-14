@@ -100,3 +100,13 @@ RUN wget https://networks.systemsbiology.net/downloads/bwa_mtb_reference_genome-
 RUN tar xvf bwa_mtb_reference_genome-20231107.tar.gz
 RUN rm bwa_mtb_reference_genome-20231107.tar.gz
 RUN wget https://networks.systemsbiology.net/downloads/mtb_downloads_sralite.csv
+
+
+# Install AWS CLI
+WORKDIR /
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+RUN unzip -u awscliv2.zip
+RUN ./aws/install
+
+# Final: start the container in the bwa_pipeline directory
+WORKDIR /bwa_pipeline
