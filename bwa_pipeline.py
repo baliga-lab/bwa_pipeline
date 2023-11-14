@@ -223,10 +223,12 @@ def bcftools_variants(samtools_results, alignment_files_path, exp_name, folder_n
     #cmd2 = '%s -p vcf %s_samtools.vcf.gz' % (TABIX, samtools_files_path)
 
     vcf_path = '%s_samtools.vcf' % samtools_files_path
-    final_vcf_path = '%s_samtools_final.vcf' % samtools_files_path
+    vcf_path2 = '%s_samtools2.vcf' % samtools_files_path
+    vcf_path_final = '%s_samtools_final.vcf' % samtools_files_path
     bcftools.variant_calling_mpileup(genome_fasta, '%s_marked.bam' % alignment_files_path,
                                      vcf_path)
-    bcftools.filter_variants(vcf_path, final_vcf_path)
+    bcftools.filter_variants(vcf_path, vcf_path2)
+    bcftools.view(vcf_path2, vcf_path_final)
     return samtools_files_path
 
 
@@ -316,6 +318,8 @@ def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combine
         print()
         print("Processing VCF file:" + vcf_file + '\n')
 
+        ## WW: is this the correct comparison ?? Note the ".gz", but
+        ## bcftools returns an uncompressed file
         if vcf_file == '%s_samtools_final.vcf.gz'%(samtools_files_path):
             # reformat file for gzip compression
             #plain_vcf_name = re.split('.gz', vcf_file)[0]
