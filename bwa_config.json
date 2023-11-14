@@ -3,6 +3,9 @@
     "data_dir": "/bwa_data",
     "result_dir": "/bwa_results",
     "tbprofiler_env": "TBprofiler2",
+    "s3_conf": {
+        "result_bucket_prefix": "bwa_mtb_result_"
+    },
     "tools": {
 	"snpeff": "java -Xmx8G -jar /snpEff/snpEff.jar",
 	"snpsift": "java -Xmx8g -jar /snpEff/SnpSift.jar",

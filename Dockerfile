@@ -99,3 +99,4 @@ WORKDIR /bwa_pipeline
 RUN wget https://networks.systemsbiology.net/downloads/bwa_mtb_reference_genome-20231107.tar.gz
 RUN tar xvf bwa_mtb_reference_genome-20231107.tar.gz
 RUN rm bwa_mtb_reference_genome-20231107.tar.gz
+RUN wget https://networks.systemsbiology.net/downloads/mtb_downloads_sralite.csv
