@@ -639,6 +639,7 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
         print( "RG: ID: %s SM: %s LB: %s PU: %s" %(RGId, RGSm, RGLb, RGPu))
 
         # 00. Get directories
+        print("DATA TRIMMED DIR: %s" % data_trimmed_dir)
         create_dirs(samtools_results, gatk_results, varscan_results,
                     data_trimmed_dir, fastqc_dir, alignment_results,
                     combined_variants)
@@ -660,7 +661,11 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
         sorted_bam_file = run_samtools_fixmate_step(base_file_name, sample_id,files_2_delete, config)
 
         # 03b. Run TB Profiler on the sorted bam file
-        run_tbprofiler(sorted_bam_file, sample_id, tbprofiler_results, config)
+        try:
+            tbprof_tool = config["tools"]["tbprofiler"]
+            run_tbprofiler(sorted_bam_file, sample_id, tbprofiler_results, config)
+        except:
+            print("WARNING: can't find TBprofiler setting, skipping")
 
         file_count += 1
 
@@ -716,7 +721,9 @@ if __name__ == '__main__':
 
     # First set the top level analysis directory
     data_folder = '%s/%s' %(config["data_dir"], args.input_folder)
-    data_trimmed_dir = "%s/trimmed" % data_folder
+    # trimmed dir is in results because you can't assume you can write
+    # to data folder
+    data_trimmed_dir = "%s/trimmed" % config["result_dir"]
     genome_dir = "%s/reference" % config["run_dir"]
     fastqc_dir = "%s/%s/%s/fastqc_results" % (config["result_dir"], args.organism, args.input_folder)
 
