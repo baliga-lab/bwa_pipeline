@@ -602,6 +602,13 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     combined_variants = os.path.join(folder_results_dir, "combined_variants")
     tbprofiler_results = os.path.join(folder_results_dir, "tbprofiler")
 
+
+    # 00. Get directories
+    print("DATA TRIMMED DIR: %s" % data_trimmed_dir)
+    create_dirs(samtools_results, gatk_results, varscan_results,
+                data_trimmed_dir, fastqc_dir, alignment_results,
+                combined_variants)
+
     # final results files
     combined_output_file = os.path.join(combined_variants, '%s_combined_variants.txt' % folder_name)
     print("combined_output_file: '%s'" % combined_output_file)
@@ -638,15 +645,6 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
         RGPu = lane
         print( "RG: ID: %s SM: %s LB: %s PU: %s" %(RGId, RGSm, RGLb, RGPu))
 
-        # 00. Get directories
-        print("DATA TRIMMED DIR: %s" % data_trimmed_dir)
-        create_dirs(samtools_results, gatk_results, varscan_results,
-                    data_trimmed_dir, fastqc_dir, alignment_results,
-                    combined_variants)
-
-        # create genome indexes
-        create_genome_indexes(genome_fasta, config)
-
         # 01. Run trim_galore + FastQC
         trim_galore(first_pair_file, second_pair_file, folder_name, sample_id, file_ext,
                     data_trimmed_dir, fastqc_dir, config)
@@ -661,11 +659,12 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
         sorted_bam_file = run_samtools_fixmate_step(base_file_name, sample_id,files_2_delete, config)
 
         # 03b. Run TB Profiler on the sorted bam file
-        try:
-            tbprof_tool = config["tools"]["tbprofiler"]
-            run_tbprofiler(sorted_bam_file, sample_id, tbprofiler_results, config)
-        except:
-            print("WARNING: can't find TBprofiler setting, skipping")
+        if organism == 'mtb':
+            try:
+                tbprof_tool = config["tools"]["tbprofiler"]
+                run_tbprofiler(sorted_bam_file, sample_id, tbprofiler_results, config)
+            except:
+                print("WARNING: can't find TBprofiler setting, skipping")
 
         file_count += 1
 
@@ -701,13 +700,11 @@ DESCRIPTION = "bwa_pipeline.py - BWA pipeline V2.0"
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      description=DESCRIPTION)
-    # needs to be the FULL PATH, does not expand
-    #parser.add_argument('datadir', help="path to raw_data directory")
     # This is likely something like the sample number
     parser.add_argument('input_folder', help="input folder without the path")
 
-    # results folder
-    #parser.add_argument('resultdir', help="result directory")
+    parser.add_argument('--index_genome',
+                        help="run BWA indexing", action="store_true")
     parser.add_argument('--organism', help="organism", default="mtb")
     parser.add_argument('--config', help="configuration json file", default="bwa_config.json")
     # run dir needs to contain "reference" and will have a results directory
@@ -720,14 +717,15 @@ if __name__ == '__main__':
         os.makedirs(config["result_dir"])
 
     # First set the top level analysis directory
-    data_folder = '%s/%s' %(config["data_dir"], args.input_folder)
+    data_folder = '%s/%s' % (config["data_dir"], args.input_folder)
+
     # trimmed dir is in results because you can't assume you can write
     # to data folder
     data_trimmed_dir = "%s/trimmed" % config["result_dir"]
-    genome_dir = "%s/reference" % config["run_dir"]
     fastqc_dir = "%s/%s/%s/fastqc_results" % (config["result_dir"], args.organism, args.input_folder)
 
     known_sites = '%s-variants-compiled_sorted.vcf' % args.organism
+    genome_dir = "%s/reference" % config["run_dir"]
     print("genome dir: '%s'" % genome_dir)
 
     ######### Annotation databases ############################
@@ -739,5 +737,10 @@ if __name__ == '__main__':
     genome_fasta = glob.glob('%s/%s' % (genome_dir,
                                         config['organisms'][args.organism]["genome_fasta"]))[0]
 
-    snpeff_db = config["organisms"][args.organism]['snpeff_db']
-    run_pipeline(args.organism, data_folder, config["result_dir"], snpeff_db, genome_fasta, config)
+    if args.index_genome:
+        # create genome indexes. This should be optional
+        create_genome_indexes(genome_fasta, config)
+    else:
+        snpeff_db = config["organisms"][args.organism]['snpeff_db']
+        run_pipeline(args.organism, data_folder, config["result_dir"],
+                     snpeff_db, genome_fasta, config)
