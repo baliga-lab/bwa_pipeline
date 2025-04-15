@@ -25,3 +25,16 @@ Then execute
 ./bwa_pipeline.py <directory in data_dir>
 ```
 
+# Note
+
+The subdirectory "reference" is expected in rundir to store the reference genome.
+It needs to be writable so an index can be generated and written in this directory
+
+The bwa_pipeline.py contains a renaming step, for the case if the chromosome name
+in the references genome is inconsistent with the snpEff database.
+We expect a file "chrom_names.txt" in the reference genome, which is a text file of the
+format
+
+CHROMOSOME_NAME_VARSCANDB<SPACE>CHROMOSOME_NAME_REFERENCE
+
+If it does not exist, there will be empty results
