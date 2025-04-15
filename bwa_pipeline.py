@@ -36,10 +36,10 @@ def create_genome_indexes(genome_fasta, config):
 ############# Functions ##############
 
 def create_dirs(samtools_results, gatk_results, varscan_results, data_trimmed_dir, fastqc_dir,
-                alignment_results, combined_variants):
+                alignment_results, combined_variants, tmp_dir):
 
     dirs = [samtools_results, gatk_results, varscan_results, data_trimmed_dir, fastqc_dir, alignment_results,
-            combined_variants]
+            combined_variants, tmp_dir]
     for dir in dirs:
         # create results folder
         print()
@@ -601,13 +601,12 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     alignment_results = os.path.join(folder_results_dir, "alignment_results")
     combined_variants = os.path.join(folder_results_dir, "combined_variants")
     tbprofiler_results = os.path.join(folder_results_dir, "tbprofiler")
-
+    tmp_dir = os.path.join(config["tmp_dir"])
 
     # 00. Get directories
-    print("DATA TRIMMED DIR: %s" % data_trimmed_dir)
     create_dirs(samtools_results, gatk_results, varscan_results,
                 data_trimmed_dir, fastqc_dir, alignment_results,
-                combined_variants)
+                combined_variants, tmp_dir)
 
     # final results files
     combined_output_file = os.path.join(combined_variants, '%s_combined_variants.txt' % folder_name)
@@ -727,15 +726,22 @@ if __name__ == '__main__':
     known_sites = '%s-variants-compiled_sorted.vcf' % args.organism
     genome_dir = "%s/reference" % config["run_dir"]
     print("genome dir: '%s'" % genome_dir)
+    if not os.path.exists(genome_dir):
+        exit("Genome directory: '%s' does not exist !!!" % genome_dir)
+    try:
+        org_config = config['organisms'][args.organism]
+    except:
+        exit("Organism '%s' not recognized !!!")
 
     ######### Annotation databases ############################
     # snpEff databases
-    genome_gff = glob.glob('%s/%s' % (genome_dir,
-                                      config['organisms'][args.organism]["genome_gff"]))
-    genome_fasta_path = "%s/%s" % (genome_dir, config['organisms'][args.organism]["genome_fasta"])
-    print("GENOME FASTA: '%s'" % genome_fasta_path)
-    genome_fasta = glob.glob('%s/%s' % (genome_dir,
-                                        config['organisms'][args.organism]["genome_fasta"]))[0]
+    genome_gff = glob.glob(os.path.join(genome_dir, org_config["genome_gff"]))
+    genome_fasta_path = os.path.join(genome_dir, org_config["genome_fasta"])
+    try:
+        print("GENOME FASTA: '%s'" % genome_fasta_path)
+        genome_fasta = glob.glob(genome_fasta_path)[0]
+    except:
+        exit("Genome FASTA file '%s' not found, please check path" % genome_fasta_path)
 
     if args.index_genome:
         # create genome indexes. This should be optional
