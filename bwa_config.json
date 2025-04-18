@@ -1,4 +1,5 @@
 {
+    "organism": "mtb",
     "run_dir": "/bwa_pipeline",
     "data_dir": "/bwa_data",
     "result_dir": "/bwa_results",

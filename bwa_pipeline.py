@@ -5,6 +5,7 @@ import sys
 import os
 import re
 from vcfutil import combine_variants
+import vcfpy
 import argparse
 import json
 import subprocess
@@ -14,9 +15,10 @@ import subprocess
 from globalsearch.rnaseq.find_files import find_fastq_files
 from samtools import SamTools
 from bcftools import BcfTools
-from varscan import VarScan
+import varscan as vs
 from gatk import GATK
 from snpeff import SnpEff
+import resr_unfixed
 
 
 def run_bwa_index(genome_fasta, config):
@@ -174,6 +176,10 @@ def run_gatk(base_file_name,files_2_delete,exp_name,alignment_results):
         files_2_delete.append(temp_file)
 
 
+def get_alignment_files_path(alignment_results, exp_name):
+    return os.path.join(alignment_results, exp_name)
+
+
 def mark_duplicates(alignment_results, exp_name, base_file_name, config):
     """Mark duplicates with Picard"""
     print("\033[34m Running Mark Duplicates.. \033[0m")
@@ -184,7 +190,7 @@ def mark_duplicates(alignment_results, exp_name, base_file_name, config):
     print('Output BAM File...')
     marked_bam_name = '%s/%s_marked.bam' % (alignment_results, exp_name)
     metrics_file = '%s/%s.metrics' % (alignment_results, exp_name)
-    alignment_files_path = '%s/%s' % (alignment_results, exp_name)
+    alignment_files_path = get_alignment_files_path(alignment_results, exp_name)
 
     picard_cmd = config['tools']['picard']
     # Mark Duplicates, use new format for picard command line
@@ -204,8 +210,6 @@ def mark_duplicates(alignment_results, exp_name, base_file_name, config):
     # index BAM file with Samtools
     samtools = SamTools(config['tools']['samtools'])
     samtools.index(marked_bam_name)
-
-    return alignment_files_path
 
 
 ####################### Samtools Variant Calling ###############################
@@ -237,20 +241,20 @@ def varscan_variants(alignment_files_path, varscan_results, exp_name, folder_nam
     print("\033[34m Running Varscan.. \033[0m")
 
     # create varscan results specific results directory
-    varscan_files_path = '%s/%s' % (varscan_results, exp_name)
-    pileup_file = "%s.pileup" % varscan_files_path
+    #varscan_files_path = '%s/%s' % (varscan_results, exp_name)
+    pileup_file = vs.get_pileup_file(varscan_results, exp_name)
 
     # samtools mpileup
     samtools = SamTools(config['tools']['samtools'])
     samtools.mpileup(genome_fasta, "%s_marked.bam" % alignment_files_path,
                      pileup_file)
 
-    varscan = VarScan(config['tools']['varscan'])
-    varscan.mpileup2snp(pileup_file, '%s_varscan_snps_final.vcf' % varscan_files_path)
-    varscan.mpileup2indel(pileup_file, '%s_varscan_inds_final.vcf' % varscan_files_path)
+    varscan = vs.VarScan(config['tools']['varscan'])
+    varscan.mpileup2snp(varscan_results, exp_name)
+    varscan.mpileup2indel(varscan_results, exp_name)
+    varscan.mpileup2cns(varscan_results, exp_name)
 
-    files_2_delete.append('%s.pileup' % varscan_files_path)
-    return varscan_files_path
+    files_2_delete.append(pileup_file)
 
 
 def gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, config):
@@ -287,6 +291,7 @@ def gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, con
     os.system(cmd6)
 
     return gatk_files_path
+
 
 
 ####################### Run SNPEff annotations ###############################
@@ -617,6 +622,7 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     # Loop through each file and create filenames
     file_count = 1
     exp_name = folder_name
+    alignment_files_path = get_alignment_files_path(alignment_results, exp_name)
     for first_pair_file, second_pair_file in fastq_files:
         first_file_name_full = os.path.basename(first_pair_file)
         file_ext = first_pair_file.split('.')[-1]
@@ -645,6 +651,7 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
         print( "RG: ID: %s SM: %s LB: %s PU: %s" %(RGId, RGSm, RGLb, RGPu))
 
         # 01. Run trim_galore + FastQC
+        """
         trim_galore(first_pair_file, second_pair_file, folder_name, sample_id, file_ext,
                     data_trimmed_dir, fastqc_dir, config)
 
@@ -661,7 +668,8 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
         if organism == 'mtb':
             try:
                 tbprof_tool = config["tools"]["tbprofiler"]
-                run_tbprofiler(sorted_bam_file, sample_id, tbprofiler_results, config)
+                ## TODO: comment me in skipping for speed
+                #run_tbprofiler(sorted_bam_file, sample_id, tbprofiler_results, config)
             except:
                 print("WARNING: can't find TBprofiler setting, skipping")
 
@@ -669,16 +677,25 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
 
     # 05. Run Mark duplicates
     # WW: base_file_name is dependent on the loop to be run, does that make any sense ?
-    alignment_files_path = mark_duplicates(alignment_results, exp_name, base_file_name, config)
+    mark_duplicates(alignment_results, exp_name, base_file_name, config)
 
     # 04. Run GATK 1st PASS
     #run_gatk(base_file_name,files_2_delete,exp_name,alignment_results)
     # 06. Run Samtools variant calling
     samtools_files_path = bcftools_variants(samtools_results, alignment_files_path, exp_name, folder_name, config)
-
     # 07. Run varscan variant calling
-    varscan_files_path = varscan_variants(alignment_files_path, varscan_results, exp_name,
-                                          folder_name, files_2_delete, config)
+    # TODO: We should look into this, because we call varscan 3 times,
+    # but we actually might only need to call the mpileup2cns function
+    # and extract the indels and snps results from the cns file
+    varscan_files_path = vs.get_varscan_files_path(varscan_results, exp_name)
+    varscan_variants(alignment_files_path, varscan_results, exp_name,
+                     folder_name, files_2_delete, config)
+       """
+
+    # 07b. Run resr unfixed pipeline
+    resr_unfixed.run_resr_unfixed(varscan_results, exp_name, config)
+
+    """
     # 08. Run GATK variant Calling
     gatk_files_path = gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, config)
 
@@ -690,6 +707,7 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
 
     # 11. Delete temporary files_2_delete
     #delete_temp_files(files_2_delete)
+    """
     folder_count += 1
 
 
@@ -699,13 +717,12 @@ DESCRIPTION = "bwa_pipeline.py - BWA pipeline V2.0"
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      description=DESCRIPTION)
+    parser.add_argument('config', help="configuration json file")
     # This is likely something like the sample number
     parser.add_argument('input_folder', help="input folder without the path")
-
     parser.add_argument('--index_genome',
                         help="run BWA indexing", action="store_true")
-    parser.add_argument('--organism', help="organism", default="mtb")
-    parser.add_argument('--config', help="configuration json file", default="bwa_config.json")
+
     # run dir needs to contain "reference" and will have a results directory
     args = parser.parse_args()
     with open(args.config) as infile:
@@ -720,16 +737,19 @@ if __name__ == '__main__':
 
     # trimmed dir is in results because you can't assume you can write
     # to data folder
+    organism = config["organism"]
     data_trimmed_dir = "%s/trimmed" % config["result_dir"]
-    fastqc_dir = "%s/%s/%s/fastqc_results" % (config["result_dir"], args.organism, args.input_folder)
+    fastqc_dir = "%s/%s/%s/fastqc_results" % (config["result_dir"],
+                                              organism,
+                                              args.input_folder)
 
-    known_sites = '%s-variants-compiled_sorted.vcf' % args.organism
-    genome_dir = "%s/reference" % config["run_dir"]
+    known_sites = '%s-variants-compiled_sorted.vcf' % organism
+    genome_dir = config["genome_dir"]
     print("genome dir: '%s'" % genome_dir)
     if not os.path.exists(genome_dir):
         exit("Genome directory: '%s' does not exist !!!" % genome_dir)
     try:
-        org_config = config['organisms'][args.organism]
+        org_config = config['organisms'][organism]
     except:
         exit("Organism '%s' not recognized !!!")
 
@@ -747,6 +767,6 @@ if __name__ == '__main__':
         # create genome indexes. This should be optional
         create_genome_indexes(genome_fasta, config)
     else:
-        snpeff_db = config["organisms"][args.organism]['snpeff_db']
-        run_pipeline(args.organism, data_folder, config["result_dir"],
+        snpeff_db = config["organisms"][organism]['snpeff_db']
+        run_pipeline(organism, data_folder, config["result_dir"],
                      snpeff_db, genome_fasta, config)

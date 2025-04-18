@@ -43,14 +43,19 @@ class SamTools:
         print ("++++++ Samtools Sort Command: '%s'" % " ".join(sort_cmd))
         compl_proc = subprocess.run(' '.join(sort_cmd), shell=True, capture_output=False, check=True)
 
-    def mpileup(self, genome_fasta, infile, outfile,
-                no_baq=True):
+    def mpileup(self, genome_fasta, infile, outfile, no_baq=True,
+                resr_unfixed=True):
         # original, but the --input-fmt-option nthreads=8 is weird
         #cmd1 = '%s mpileup --input-fmt-option nthreads=8 -B -f %s -o %s.pileup %s_marked.bam' % (config['tools']['samtools'],
         #                                                                                         genome_fasta, varscan_files_path, alignment_files_path)
         cmd = [self.cmd, "mpileup"]
         if no_baq:
             cmd.append("-B")
+
+        # RESR Pipeline needs extra fields !!!!!
+        if resr_unfixed:
+            cmd.extend(["-q", "30", "-Q", "20", "-ABO"])
+
         cmd.extend(["-f", genome_fasta, "-o", outfile, infile])
         print("++++++ Samtools Mpileup: '%s'" % ' '.join(cmd))
         compl_proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False, check=True)
