@@ -9,9 +9,27 @@ MIN_COVERAGE = 3
 def get_result_snp_file(varscan_results, exp_name):
     return '%s_varscan_snps_unfixed.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
 
-
 def get_result_indel_file(varscan_results, exp_name):
     return '%s_varscan_inds_unfixed.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+
+def get_snpeff_format_snp_file(varscan_results, exp_name):
+    return '%s_snps_snpeff_formatted.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+
+def get_snpeff_format_indel_file(varscan_results, exp_name):
+    return '%s_inds_snpeff_formatted.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+
+def get_snpsift_filtered_snp_file(varscan_results, exp_name):
+    return '%s_snps_snpsift_filtered.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+
+def get_snpsift_filtered_indel_file(varscan_results, exp_name):
+    return '%s_inds_snpsift_filtered.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+
+def get_finalized_snp_file(varscan_results, exp_name):
+    return '%s_snps_finalized.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+
+def get_finalized_indel_file(varscan_results, exp_name):
+    return '%s_inds_finalized.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+
 
 def get_filt_snp_file(varscan_results, exp_name):
     return '%s_varscan_snps_filtered.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
@@ -23,7 +41,6 @@ def get_filt_indel_file(varscan_results, exp_name):
 
 def get_for_snp_file(varscan_results, exp_name):
     return '%s_varscan_snps.for' % vs.get_varscan_files_path(varscan_results, exp_name)
-
 
 def get_for_indel_file(varscan_results, exp_name):
     return '%s_varscan_inds.for' % vs.get_varscan_files_path(varscan_results, exp_name)
@@ -248,15 +265,101 @@ def convert_to_vcf(varscan_results, exp_name, config):
 
 def run_snpeff(varscan_results, exp_name, config):
     print("Running snpEff")
-    cmd = ["java", "-jar", "/proj/omics4tb2/wwu/snpEff/snpEff.jar",
+
+    # Step 1: use snpEff to format the result
+    print("1. using snpEff to format the result")
+    result_indel_file = get_result_indel_file(varscan_results, exp_name)
+    result_snp_file = get_result_snp_file(varscan_results, exp_name)
+    snpeff_format_snp_file = get_snpeff_format_snp_file(varscan_results, exp_name)
+    snpeff_format_indel_file = get_snpeff_format_indel_file(varscan_results, exp_name)
+    snpsift_filtered_snp_file = get_snpsift_filtered_snp_file(varscan_results, exp_name)
+    snpsift_filtered_indel_file = get_snpsift_filtered_indel_file(varscan_results, exp_name)
+
+    cmd = [config["tools"]["snpeff"],
            "-ud", "0", "-classic", "-csvStats",
-           "snpeff-indel-stat.txt", "-geneId", "-lof", "-v", "-formatEff",
+           os.path.join(varscan_results, "snpeff-indel-stat.txt"),
+           "-geneId", "-lof", "-v", "-formatEff",
            "-o", "gatk", "Mycobacterium_tuberculosis_h37rv",
-           "SRR10040387-indel.final.vcf", ">",
-           "SRR10040387-indel.snpeff-formatted.vcf"]
-# snpsift
-    #cat SRR10040387-indel.snpeff-formatted.vcf | java -jar /proj/omics4tb2/wwu/snpEff/SnpSift.jar filter -p "((FILTER = 'PASS') & (EFF[*].CODING != 'NON_CODING'))" > SRR10040387-indel.snpsift-filtered.vcf
-    #cat SRR10040387-indel.snpsift-filtered.vcf | perl /proj/omics4tb2/wwu/snpEff/scripts/vcfEffOnePerLine.pl | java -jar /proj/omics4tb2/wwu/snpEff/SnpSift.jar extractFields - CHROM POS REF ALT AF AC DP MQ "GEN[*].AD" "GEN[*].RD" "(FILTER = 'PASS')" "EFF[*].EFFECT" "EFF[*].IMPACT" "EFF[*].FUNCLASS" "EFF[*].CODON" "EFF[*].AA" "EFF[*].AA_LEN" "EFF[*].GENE" "EFF[*].CODING" "EFF[*].RANK" "EFF[*].DISTANCE" > SRR10040387-indel.finalized.vcf
+           result_indel_file, ">", snpeff_format_indel_file]
+    proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
+                          check=True)
+
+    cmd = [config["tools"]["snpeff"],
+           "-ud", "0", "-classic", "-csvStats",
+           os.path.join(varscan_results, "snpeff-snp-stat.txt"),
+           "-geneId", "-lof", "-v", "-formatEff",
+           "-o", "gatk", "Mycobacterium_tuberculosis_h37rv",
+           result_snp_file, ">", snpeff_format_snp_file]
+    proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
+                          check=True)
+
+    # snpsift
+    cmd = [
+        "cat",
+        snpeff_format_indel_file,
+        "|",
+        config["tools"]["snpsift"],
+        "filter", "-p",
+        "\"((FILTER = 'PASS') & (EFF[*].CODING != 'NON_CODING'))\"",
+        ">",
+        snpsift_filtered_indel_file
+    ]
+    proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
+                          check=True)
+
+    cmd = [
+        "cat",
+        snpeff_format_snp_file,
+        "|",
+        config["tools"]["snpsift"],
+        "filter", "-p",
+        "\"((FILTER = 'PASS') & (EFF[*].CODING != 'NON_CODING'))\"",
+        ">",
+        snpsift_filtered_snp_file
+    ]
+    proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
+                          check=True)
+
+    # vcfEffOnePerLine | snpSift
+    finalized_indel_file = get_finalized_indel_file(varscan_results, exp_name)
+    finalized_snp_file = get_finalized_snp_file(varscan_results, exp_name)
+    cmd = [
+        "cat",
+        snpsift_filtered_indel_file,
+        "|",
+        config["tools"]["vceff_opl"], "|",
+        config["tools"]["snpsift"],
+        "extractFields", "-",
+        "CHROM POS REF ALT AF AC DP MQ \"GEN[*].AD\"",
+        "\"GEN[*].RD\" \"(FILTER = 'PASS')\"",
+        "\"EFF[*].EFFECT\" \"EFF[*].IMPACT\"",
+        "\"EFF[*].FUNCLASS\" \"EFF[*].CODON\" \"EFF[*].AA\"",
+        "\"EFF[*].AA_LEN\" \"EFF[*].GENE\" \"EFF[*].CODING\"",
+        "\"EFF[*].RANK\" \"EFF[*].DISTANCE\"",
+        ">",
+        finalized_indel_file
+    ]
+    proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
+                          check=True)
+    cmd = [
+        "cat",
+        snpsift_filtered_snp_file,
+        "|",
+        config["tools"]["vceff_opl"], "|",
+        config["tools"]["snpsift"],
+        "extractFields", "-",
+        "CHROM POS REF ALT AF AC DP MQ \"GEN[*].AD\"",
+        "\"GEN[*].RD\" \"(FILTER = 'PASS')\"",
+        "\"EFF[*].EFFECT\" \"EFF[*].IMPACT\"",
+        "\"EFF[*].FUNCLASS\" \"EFF[*].CODON\" \"EFF[*].AA\"",
+        "\"EFF[*].AA_LEN\" \"EFF[*].GENE\" \"EFF[*].CODING\"",
+        "\"EFF[*].RANK\" \"EFF[*].DISTANCE\"",
+        ">",
+        finalized_snp_file
+    ]
+    proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
+                          check=True)
+
 
 def run_resr_unfixed(varscan_results, exp_name, config):
     print("run_resr_unfixed()")
@@ -273,5 +376,5 @@ def run_resr_unfixed(varscan_results, exp_name, config):
     info_mark(varscan_results, exp_name, config)
     redepin_filt(varscan_results, exp_name, config, all_ratio, avg_seq_depth)
     convert_to_vcf(varscan_results, exp_name, config)
-    run_snp_eff(varscan_results, exp_name, config)
+    run_snpeff(varscan_results, exp_name, config)
 

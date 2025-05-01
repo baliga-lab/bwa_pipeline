@@ -249,7 +249,7 @@ def varscan_variants(alignment_files_path, varscan_results, exp_name, folder_nam
     samtools.mpileup(genome_fasta, "%s_marked.bam" % alignment_files_path,
                      pileup_file)
 
-    varscan = vs.VarScan(config['tools']['varscan'])
+    varscan = vs.VarScan(config)
     varscan.mpileup2snp(varscan_results, exp_name)
     varscan.mpileup2indel(varscan_results, exp_name)
     varscan.mpileup2cns(varscan_results, exp_name)
@@ -651,7 +651,6 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
         print( "RG: ID: %s SM: %s LB: %s PU: %s" %(RGId, RGSm, RGLb, RGPu))
 
         # 01. Run trim_galore + FastQC
-        """
         trim_galore(first_pair_file, second_pair_file, folder_name, sample_id, file_ext,
                     data_trimmed_dir, fastqc_dir, config)
 
@@ -690,12 +689,10 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     varscan_files_path = vs.get_varscan_files_path(varscan_results, exp_name)
     varscan_variants(alignment_files_path, varscan_results, exp_name,
                      folder_name, files_2_delete, config)
-       """
 
     # 07b. Run resr unfixed pipeline
     resr_unfixed.run_resr_unfixed(varscan_results, exp_name, config)
 
-    """
     # 08. Run GATK variant Calling
     gatk_files_path = gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, config)
 
@@ -707,7 +704,6 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
 
     # 11. Delete temporary files_2_delete
     #delete_temp_files(files_2_delete)
-    """
     folder_count += 1
 
 

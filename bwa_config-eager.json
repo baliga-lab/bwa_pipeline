@@ -1,0 +1,70 @@
+{
+    "organism": "mtb",
+    "run_dir": "/proj/omics4tb2/wwu/bwa_pipeline_github",
+    "data_dir": "/proj/omics4tb2/wwu/bwa_pipeline_github/TEST_DATA",
+    "genome_dir": "/proj/omics4tb2/wwu/bwa_pipeline_github/mtb_genome",
+    "result_dir": "/proj/omics4tb2/wwu/bwa_pipeline_github/bwa_results",
+    "resr_database_dir": "/proj/omics4tb2/wwu/bwa_pipeline_github/resr_databases",
+    "tbprofiler_env": "TBprofiler2",
+    "s3_conf": {
+        "result_bucket_prefix": "bwa_mtb_result_"
+    },
+    "tools": {
+	    "snpeff": "java -Xmx8G -jar /proj/omics4tb2/wwu/snpEff/snpEff.jar",
+	    "snpsift": "java -Xmx8g -jar /proj/omics4tb2/wwu/snpEff/SnpSift.jar",
+	    "samtools": "samtools",
+	    "bwa": "bwa",
+	    "gatk": "/users/sturkars/gatk-4.3.0.0/gatk",
+	    "picard": "java -Xmx4g -jar /proj/omics4tb2/wwu/jarfiles/picard-2.27.5.jar",
+	    "varscan": {
+            "cmd": "java -Xmx8g -jar /proj/omics4tb2/wwu/jarfiles/VarScan.v2.4.0.jar",
+            "mpileup2snp": {
+                "min-coverage": 3,
+                "min-reads2": 2,
+                "min-avg-qual": 20,
+                "min-freq-for-hom": 0.9,
+                "min-var-freq": 0.01,
+                "strand-filter": true
+            },
+            "mpileup2indel": {
+                "min-coverage": 3,
+                "min-reads2": 2,
+                "min-avg-qual": 20,
+                "min-freq-for-hom": 0.9,
+                "min-var-freq": 0.01,
+                "strand-filter": true
+            },
+            "mpileup2cns": {
+                "min-coverage": 3,
+                "min-reads2": 2,
+                "min-avg-qual": 20,
+                "min-freq-for-hom": 0.9,
+                "min-var-freq": 0.01,
+                "strand-filter": true
+            }
+        },
+	    "bcftools": "bcftools",
+	    "tabix": "tabix",
+	    "bgzip": "bgzip",
+	    "trim_galore": "trim_galore",
+	    "vceff_opl": "perl /proj/omics4tb2/wwu/snpEff/scripts/vcfEffOnePerLine.pl",
+        "tbprofiler": "tb-profiler"
+    },
+    "fastq_patterns": ["*_{{readnum}}.fastq.gz"],
+    "tmp_dir": "/proj/omics4tb2/wwu/bwa_pipeline_github/bwa_tmp",
+    "organisms": {
+	    "mmp": { "snpeff_db": "Methanococcus_maripaludis_s2" },
+	    "dvh": { "snpeff_db": "Desulfovibrio_vulgaris_str_hildenborough" },
+	    "hal": { "snpeff_db": "Halobacterium_salinarum_nrc_1" },
+	    "msm": {
+	        "snpeff_db": "Mycobacterium_smegmatis_str_mc2_155_gca_000767605",
+	        "genome_gff": "GCF_000767605.1_ASM767605v1_genomic.gff",
+	        "genome_fasta": "GCF_000767605.1_ASM76760v1_genomic.fna"
+	    },
+	    "mtb": {
+	        "snpeff_db": "Mycobacterium_tuberculosis_h37rv",
+	        "genome_gff": "GCF_000195955.2_ASM19595v2_genomic_modified.gff",
+	        "genome_fasta": "MTB_ancestor_reference.fasta"
+	    }
+    }
+}

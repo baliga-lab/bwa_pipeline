@@ -33,22 +33,27 @@ def get_varscan_files_path(varscan_results, exp_name):
 class VarScan:
     """This interface was created based on VarScan 2.4.0"""
 
-    def __init__(self, cmd_path):
+    def __init__(self, config):
         """Constructor.
         @param cmd_path path to the samtools command
         """
-        self.cmd = cmd_path
+        self.config = config
+        self.cmd = config['tools']['varscan']['cmd']
 
     def mpileup2snp(self, varscan_results, exp_name):
         """VarScan for SNPs"""
         pileup_file = get_pileup_file(varscan_results, exp_name)
         outfile = get_snps_file(varscan_results, exp_name)
+        conf = self.config["tools"]["varscan"]["mpileup2snp"]
 
         cmd = [self.cmd, "mpileup2snp", pileup_file,
-               "--output-vcf", "1", "--min-coverage", "8",
-               "--min-reads2", "2", "--min-avg-qual", "30",
-               "--min-var-freq", "0.01",
-               "--strand-filter", "1", ">",
+               "--output-vcf", "1",
+               "--min-coverage", str(conf["min-coverage"]),
+               "--min-reads2", str(conf["min-reads2"]),
+               "--min-avg-qual", str(conf["min-avg-qual"]),
+               "-min-freq-for-hom", str(conf["min-freq-for-hom"]),
+               "--strand-filter", "1" if conf["strand-filter"] else "0",
+               ">",
                outfile]
         command = ' '.join(cmd)
         print("++++++ Varscan for SNPs: '%s'" % command)
@@ -59,12 +64,16 @@ class VarScan:
         """VarScan for indels"""
         pileup_file = get_pileup_file(varscan_results, exp_name)
         outfile = get_indels_file(varscan_results, exp_name)
+        conf = self.config["tools"]["varscan"]["mpileup2snp"]
 
         cmd = [self.cmd, "mpileup2indel", pileup_file,
-               "--output-vcf", "1", "--min-coverage", "8",
-               "--min-reads2", "2", "--min-avg-qual", "30",
-               "--min-var-freq", "0.01",
-               "--strand-filter", "1", ">",
+               "--output-vcf", "1",
+               "--min-coverage", str(conf["min-coverage"]),
+               "--min-reads2", str(conf["min-reads2"]),
+               "--min-avg-qual", str(conf["min-avg-qual"]),
+               "-min-freq-for-hom", str(conf["min-freq-for-hom"]),
+               "--strand-filter", "1" if conf["strand-filter"] else "0",
+               ">",
                outfile]
         command = ' '.join(cmd)
         print("++++++ Varscan for INDELS: '%s'" % command)
@@ -75,12 +84,16 @@ class VarScan:
         """VarScan for everything"""
         pileup_file = get_pileup_file(varscan_results, exp_name)
         outfile = get_cns_file(varscan_results, exp_name)
+        conf = self.config["tools"]["varscan"]["mpileup2snp"]
 
         cmd = [self.cmd, "mpileup2cns", pileup_file,
-               "--output-vcf", "1", "--min-coverage", "8",
-               "--min-reads2", "2", "--min-avg-qual", "30",
-               "--min-var-freq", "0.01",
-               "--strand-filter", "1", ">",
+               "--output-vcf", "1",
+               "--min-coverage", str(conf["min-coverage"]),
+               "--min-reads2", str(conf["min-reads2"]),
+               "--min-avg-qual", str(conf["min-avg-qual"]),
+               "-min-freq-for-hom", str(conf["min-freq-for-hom"]),
+               "--strand-filter", "1" if conf["strand-filter"] else "0",
+               ">",
                outfile]
         command = ' '.join(cmd)
         print("++++++ Varscan for CNSs: '%s'" % command)
