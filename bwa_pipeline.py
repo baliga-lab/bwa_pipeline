@@ -9,6 +9,9 @@ import vcfpy
 import argparse
 import json
 import subprocess
+import varscan
+import pandas
+import shutil
 
 # use globalsearch's well tested and flexible
 # pattern based FASTQ file discovery
@@ -217,6 +220,7 @@ def bcftools_variants(samtools_results, alignment_files_path, exp_name, folder_n
     print("\033[34m Running bcftools Variant Calling.. \033[0m")
 
     # create samtools results specific results directory
+    # WW: This is a duplicate TODO REMOVE
     samtools_files_path = '%s/%s' % (samtools_results, exp_name)
 
     # Produce BCF file with all locations in the genome
@@ -233,7 +237,6 @@ def bcftools_variants(samtools_results, alignment_files_path, exp_name, folder_n
                                      vcf_path)
     bcftools.filter_variants(vcf_path, vcf_path2)
     bcftools.view(vcf_path2, vcf_path_final)
-    return samtools_files_path
 
 
 ####################### Varscan Variant Calling ###############################
@@ -289,9 +292,6 @@ def gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, con
     cmd6 = "%s MergeVcfs I=%s_gatk_snps_filtered.vcf I= %s_gatk_inds_filtered.vcf O=%s_gatk_final.vcf" % (config['tools']['picard'], gatk_files_path, gatk_files_path, gatk_files_path)
     print("++++++ Merging vcf files: ", cmd6)
     os.system(cmd6)
-
-    return gatk_files_path
-
 
 
 ####################### Run SNPEff annotations ###############################
@@ -409,14 +409,35 @@ def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combine
     run_snpeff.t.close()
 
 ####################### Collate variants from three programs ###############################
-def salomon(aggregatedList):
+
+
+def read_ppe_ins_loci(config):
+    result = set()
+    with open(os.path.join(config["resr_database_dir"], "PPE_INS_loci.list")) as f:
+        for line in f:
+            result.add(line.strip())
+    return result
+
+def salomon(aggregatedList, config):
     # this function takes a list of lists of variants and find the consensus list
+    if config['organism'] == 'mtb':
+        is_mtb = True
+        ppe_ins_loci = read_ppe_ins_loci(config)
+    else:
+        is_mtb = False
+        ppe_ins_loci = None
 
     # f.1. finding the unique positions
-    uniqueLocations=[]
+    uniqueLocations = []
     for variants in aggregatedList:
         for variant in variants:
-            uniqueLocation=variant[:3]
+            uniqueLocation = variant[:3]
+            # special case for MTB: Exclude ppe_ins_loci
+            print(uniqueLocation)
+            if is_mtb:
+                if uniqueLocation[1] in ppe_ins_loci:
+                    continue
+
             if uniqueLocation not in uniqueLocations:
                 uniqueLocations.append(uniqueLocation)
 
@@ -525,7 +546,10 @@ def variantRetriever(combined_output_file):
 
 
 ####################### Collate variants ###############################
-def collate_variants(combined_output_file,merged_variants_file):
+def collate_variants(exp_name, combined_output_file, merged_variants_file,
+                     combined_variants, varscan_results,
+                     gatk_files_path, samtools_files_path,
+                     config):
     print( "\033[34m Running Collate variants.. \033[0m")
 
     # 2. recovering list of variants
@@ -534,7 +558,7 @@ def collate_variants(combined_output_file,merged_variants_file):
 
     # 3. finding consensus list of variants
     print( 'merging...')
-    consensus_list = salomon([varscan_list,gatk_list,samtools_list])
+    consensus_list = salomon([varscan_list, gatk_list, samtools_list], config)
     print( 'final set',len(consensus_list))
 
     # 4. writing a consensus list
@@ -546,6 +570,65 @@ def collate_variants(combined_output_file,merged_variants_file):
             line2write='\t'.join(element)
             line2write=line2write+'\n'
             g.write(line2write)
+
+    if config['organism'] == 'mtb':
+        annotate_combined_results(exp_name, merged_variants_file, combined_variants,
+                                  varscan_results,
+                                  gatk_files_path, samtools_files_path,
+                                  config)
+
+def annotate_combined_results(exp_name, merged_variants_file, combined_variants,
+                              varscan_results,
+                              gatk_files_path, samtools_files_path,
+                              config):
+    """Tuberculist annotation and create a new result file based on the TSV file with a 'Name' column which
+    has the intergenic relationship"""
+
+    # Step 1. create annotation script based on the merged_variants_file and name
+    # in the variable annotated_result
+    annot_script = os.path.join(config["run_dir"], "annotate_mtb_results.py")
+    all_snps_vcf = varscan.get_snps_file(varscan_results, exp_name)
+    all_indels_vcf = varscan.get_indels_file(varscan_results, exp_name)
+    annotated_result = os.path.join(combined_variants, "COMBINED_ANNOTATED.tsv")
+    final_gatk_vcf = "%s_gatk_final.vcf" % gatk_files_path
+    final_samtools_vcf = '%s_samtools_final.vcf' % samtools_files_path
+
+    cmd = [
+        annot_script,
+        "--nonvcf",
+        merged_variants_file,
+        config["resr_database_dir"],
+        all_snps_vcf, all_indels_vcf,
+        final_gatk_vcf, final_samtools_vcf,
+        ">",
+        annotated_result
+    ]
+    print(' '.join(cmd))
+    proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
+                          check=True)
+
+    # Step 2. use the "Name" column of the annotated_result and append it to the end
+    # make a map from position to Name
+    pos2name = {}
+    df1 = pandas.read_csv(annotated_result, sep='\t', header=0)
+    for index, row in df1.iterrows():
+        pos2name[int(row["VarscanPosition"])] = row["Name"]
+
+    # of the merged_variants file, aligned by the position
+    tmp_merged = os.path.join(combined_variants, "tmp_annotated_merged.tsv")
+    with open(merged_variants_file) as infile, open(tmp_merged, "w") as outfile:
+        header = list(infile.readline().strip().split("\t"))
+        header.append("Name")
+        outfile.write("\t".join(header) + "\n")
+        for line in infile:
+            comps = line.strip().split("\t")
+            pos = int(comps[1])
+            name = pos2name.get(pos, "NA")
+            comps.append(name)
+            outfile.write("\t".join(comps) + "\n")
+
+    # Step 3. move the temp file to the final file with the amendment
+    shutil.move(tmp_merged, merged_variants_file)
 
 
 def delete_temp_files(files_2_delete):
@@ -608,21 +691,26 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     tbprofiler_results = os.path.join(folder_results_dir, "tbprofiler")
     tmp_dir = os.path.join(config["tmp_dir"])
 
-    # 00. Get directories
-    create_dirs(samtools_results, gatk_results, varscan_results,
-                data_trimmed_dir, fastqc_dir, alignment_results,
-                combined_variants, tmp_dir)
-
     # final results files
     combined_output_file = os.path.join(combined_variants, '%s_combined_variants.txt' % folder_name)
     print("combined_output_file: '%s'" % combined_output_file)
     merged_variants_file = os.path.join(combined_variants, '%s_merged_variants_final.txt' % folder_name)
     print("combined_output_file: '%s'" % combined_output_file)
 
-    # Loop through each file and create filenames
-    file_count = 1
     exp_name = folder_name
     alignment_files_path = get_alignment_files_path(alignment_results, exp_name)
+    samtools_files_path = '%s/%s' % (samtools_results, exp_name)
+    varscan_files_path = vs.get_varscan_files_path(varscan_results, exp_name)
+    gatk_files_path = '%s/%s' % (gatk_results, exp_name)
+
+    """
+    # 00. Get directories
+    create_dirs(samtools_results, gatk_results, varscan_results,
+                data_trimmed_dir, fastqc_dir, alignment_results,
+                combined_variants, tmp_dir)
+
+    # Loop through each file and create filenames
+    file_count = 1
     for first_pair_file, second_pair_file in fastq_files:
         first_file_name_full = os.path.basename(first_pair_file)
         file_ext = first_pair_file.split('.')[-1]
@@ -681,12 +769,11 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     # 04. Run GATK 1st PASS
     #run_gatk(base_file_name,files_2_delete,exp_name,alignment_results)
     # 06. Run Samtools variant calling
-    samtools_files_path = bcftools_variants(samtools_results, alignment_files_path, exp_name, folder_name, config)
+    bcftools_variants(samtools_results, alignment_files_path, exp_name, folder_name, config)
     # 07. Run varscan variant calling
     # TODO: We should look into this, because we call varscan 3 times,
     # but we actually might only need to call the mpileup2cns function
     # and extract the indels and snps results from the cns file
-    varscan_files_path = vs.get_varscan_files_path(varscan_results, exp_name)
     varscan_variants(alignment_files_path, varscan_results, exp_name,
                      folder_name, files_2_delete, config)
 
@@ -694,13 +781,17 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     resr_unfixed.run_resr_unfixed(varscan_results, exp_name, config)
 
     # 08. Run GATK variant Calling
-    gatk_files_path = gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, config)
+    gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, config)
 
     # 09. Run SNPEff annotations
     vcf_file = run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combined_variants, exp_name,
                           snpeff_db, config)
+    """
     # 10. Collate variants into single file from 3 callers and unify them
-    collate_variants(combined_output_file,merged_variants_file)
+    collate_variants(exp_name, combined_output_file, merged_variants_file,
+                     combined_variants, varscan_results,
+                     gatk_files_path, samtools_files_path,
+                     config)
 
     # 11. Delete temporary files_2_delete
     #delete_temp_files(files_2_delete)

@@ -6,79 +6,88 @@ GENOME_SIZE = 4411532.0
 MIN_COVERAGE = 3
 
 
+# The official file names for the RESR workflow are
+# defined here
+# Don't try to build them anywhere else, otherwise we will
+# lose consistency
+
 def get_result_snp_file(varscan_results, exp_name):
-    return '%s_varscan_snps_unfixed.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_snps.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_result_indel_file(varscan_results, exp_name):
-    return '%s_varscan_inds_unfixed.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_inds.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_snpeff_format_snp_file(varscan_results, exp_name):
-    return '%s_snps_snpeff_formatted.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_snps_snpeff_formatted.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_snpeff_format_indel_file(varscan_results, exp_name):
-    return '%s_inds_snpeff_formatted.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_inds_snpeff_formatted.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_snpsift_filtered_snp_file(varscan_results, exp_name):
-    return '%s_snps_snpsift_filtered.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_snps_snpsift_filtered.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_snpsift_filtered_indel_file(varscan_results, exp_name):
-    return '%s_inds_snpsift_filtered.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_inds_snpsift_filtered.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_finalized_snp_file(varscan_results, exp_name):
-    return '%s_snps_finalized.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_snps_finalized.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_finalized_indel_file(varscan_results, exp_name):
-    return '%s_inds_finalized.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_inds_finalized.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+
+def get_annotated_snp_file(varscan_results, exp_name):
+    return '%s_RESR_UNFIXED_snps_annotated.tsv' % vs.get_varscan_files_path(varscan_results, exp_name)
+
+def get_annotated_indel_file(varscan_results, exp_name):
+    return '%s_RESR_UNFIXED_inds_annotated.tsv' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 
 def get_filt_snp_file(varscan_results, exp_name):
-    return '%s_varscan_snps_filtered.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_snps_filtered.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 
 def get_filt_indel_file(varscan_results, exp_name):
-    return '%s_varscan_inds_filtered.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_inds_filtered.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 
 def get_for_snp_file(varscan_results, exp_name):
-    return '%s_varscan_snps.for' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_snps.for' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_for_indel_file(varscan_results, exp_name):
-    return '%s_varscan_inds.for' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_inds.for' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_forup_snp_file(varscan_results, exp_name):
-    return '%s_varscan_snps.forup' % vs.get_varscan_files_path(varscan_results, exp_name)
-
+    return '%s_RESR_UNFIXED_varscan_snps.forup' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_forup_indel_file(varscan_results, exp_name):
-    return '%s_varscan_inds.forup' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_inds.forup' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_mix_snp_file(varscan_results, exp_name):
-    return '%s_varscan_snps.mix' % vs.get_varscan_files_path(varscan_results, exp_name)
-
+    return '%s_RESR_UNFIXED_varscan_snps.mix' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_mix_indel_file(varscan_results, exp_name):
-    return '%s_varscan_inds.mix' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_inds.mix' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_mixfor_snp_file(varscan_results, exp_name):
-    return '%s_varscan_snps.mixfor' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_snps.mixfor' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 
 def get_mixfor_indel_file(varscan_results, exp_name):
-    return '%s_varscan_inds.mixfor' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_inds.mixfor' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_mixmark_snp_file(varscan_results, exp_name):
-    return '%s_varscan_snps.mixmark' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_snps.mixmark' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 
 def get_mixmark_indel_file(varscan_results, exp_name):
-    return '%s_varscan_inds.mixmark' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_inds.mixmark' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_mixmarkkept_snp_file(varscan_results, exp_name):
-    return '%s_varscan_snps.mixmarkkept' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_snps.mixmarkkept' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 
 def get_mixmarkkept_indel_file(varscan_results, exp_name):
-    return '%s_varscan_inds.mixmarkkept' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_varscan_inds.mixmarkkept' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 
 def get_avg_sequencing_depth(cns_file):
@@ -280,7 +289,9 @@ def run_snpeff(varscan_results, exp_name, config):
            os.path.join(varscan_results, "snpeff-indel-stat.txt"),
            "-geneId", "-lof", "-v", "-formatEff",
            "-o", "gatk", "Mycobacterium_tuberculosis_h37rv",
-           result_indel_file, ">", snpeff_format_indel_file]
+           result_indel_file, ">",
+           # inds_snpeff_formatted.vcf
+           snpeff_format_indel_file]
     proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
                           check=True)
 
@@ -289,19 +300,23 @@ def run_snpeff(varscan_results, exp_name, config):
            os.path.join(varscan_results, "snpeff-snp-stat.txt"),
            "-geneId", "-lof", "-v", "-formatEff",
            "-o", "gatk", "Mycobacterium_tuberculosis_h37rv",
-           result_snp_file, ">", snpeff_format_snp_file]
+           result_snp_file, ">",
+           # snps_snpeff_formatted.vcf
+           snpeff_format_snp_file]
     proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
                           check=True)
 
     # snpsift
     cmd = [
         "cat",
+        # inds_snpeff_formatted.vcf
         snpeff_format_indel_file,
         "|",
         config["tools"]["snpsift"],
         "filter", "-p",
-        "\"((FILTER = 'PASS') & (EFF[*].CODING != 'NON_CODING'))\"",
+        "\"((FILTER = 'PASS')\"",
         ">",
+        # snps_snpsift_filtered.vcf
         snpsift_filtered_indel_file
     ]
     proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
@@ -309,12 +324,14 @@ def run_snpeff(varscan_results, exp_name, config):
 
     cmd = [
         "cat",
+        # snps_snpeff_formatted.vcf
         snpeff_format_snp_file,
         "|",
         config["tools"]["snpsift"],
         "filter", "-p",
-        "\"((FILTER = 'PASS') & (EFF[*].CODING != 'NON_CODING'))\"",
+        "\"((FILTER = 'PASS')\"",
         ">",
+        # snps_snpsift_filtered.vcfsp
         snpsift_filtered_snp_file
     ]
     proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
@@ -325,37 +342,66 @@ def run_snpeff(varscan_results, exp_name, config):
     finalized_snp_file = get_finalized_snp_file(varscan_results, exp_name)
     cmd = [
         "cat",
+        # indsel_snpsift_filtered.vcf
         snpsift_filtered_indel_file,
         "|",
-        config["tools"]["vceff_opl"], "|",
-        config["tools"]["snpsift"],
-        "extractFields", "-",
-        "CHROM POS REF ALT AF AC DP MQ \"GEN[*].AD\"",
-        "\"GEN[*].RD\" \"(FILTER = 'PASS')\"",
-        "\"EFF[*].EFFECT\" \"EFF[*].IMPACT\"",
-        "\"EFF[*].FUNCLASS\" \"EFF[*].CODON\" \"EFF[*].AA\"",
-        "\"EFF[*].AA_LEN\" \"EFF[*].GENE\" \"EFF[*].CODING\"",
-        "\"EFF[*].RANK\" \"EFF[*].DISTANCE\"",
+        # TODO: VCEFF_OPL SWALLOWS THE META INFORMATION FROM THE COMMENTS !!
+        config["tools"]["vceff_opl"],
+        #"|",
+        #config["tools"]["snpsift"],
+        #"extractFields", "-",
+        #"CHROM POS REF ALT \"GEN[*].AD\"",
+        #"\"GEN[*].RD\" \"(FILTER = 'PASS')\"",
         ">",
+        # inds_finalized.vcf
         finalized_indel_file
     ]
     proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
                           check=True)
     cmd = [
         "cat",
+        # snps_snpsift_filtered.vcf
         snpsift_filtered_snp_file,
         "|",
-        config["tools"]["vceff_opl"], "|",
-        config["tools"]["snpsift"],
-        "extractFields", "-",
-        "CHROM POS REF ALT AF AC DP MQ \"GEN[*].AD\"",
-        "\"GEN[*].RD\" \"(FILTER = 'PASS')\"",
-        "\"EFF[*].EFFECT\" \"EFF[*].IMPACT\"",
-        "\"EFF[*].FUNCLASS\" \"EFF[*].CODON\" \"EFF[*].AA\"",
-        "\"EFF[*].AA_LEN\" \"EFF[*].GENE\" \"EFF[*].CODING\"",
-        "\"EFF[*].RANK\" \"EFF[*].DISTANCE\"",
+        config["tools"]["vceff_opl"],
+
+        #"|",
+        #config["tools"]["snpsift"],
+        #"extractFields", "-",
+        #"CHROM POS REF ALT \"GEN[*].AD\"",
+        #"\"GEN[*].RD\" \"(FILTER = 'PASS')\"",
         ">",
+        # snp_finalized.vcf
         finalized_snp_file
+    ]
+    proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
+                          check=True)
+
+
+def annotate_results(varscan_results, exp_name, config):
+    annot_script = os.path.join(config["run_dir"], "annotate_mtb_results.py")
+    resr_snp_result = get_result_snp_file(varscan_results, exp_name)
+    resr_indel_result = get_result_indel_file(varscan_results, exp_name)
+    final_snp_result = get_finalized_snp_file(varscan_results, exp_name)
+    final_indel_result = get_finalized_indel_file(varscan_results, exp_name)
+    cmd = [
+        annot_script,
+        final_snp_result,
+        config["resr_database_dir"],
+        resr_snp_result,
+        ">",
+        get_annotated_snp_file(varscan_results, exp_name)
+    ]
+    proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
+                          check=True)
+
+    cmd = [
+        annot_script,
+        final_indel_result,
+        config["resr_database_dir"],
+        resr_indel_result,
+        ">",
+        get_annotated_indel_file(varscan_results, exp_name)
     ]
     proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
                           check=True)
@@ -377,4 +423,4 @@ def run_resr_unfixed(varscan_results, exp_name, config):
     redepin_filt(varscan_results, exp_name, config, all_ratio, avg_seq_depth)
     convert_to_vcf(varscan_results, exp_name, config)
     run_snpeff(varscan_results, exp_name, config)
-
+    annotate_results(varscan_results, exp_name, config)
