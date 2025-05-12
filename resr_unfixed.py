@@ -1,6 +1,7 @@
 import vcfpy
 import os, subprocess
 import varscan as vs
+import pandas
 
 GENOME_SIZE = 4411532.0
 MIN_COVERAGE = 3
@@ -384,13 +385,15 @@ def annotate_results(varscan_results, exp_name, config):
     resr_indel_result = get_result_indel_file(varscan_results, exp_name)
     final_snp_result = get_finalized_snp_file(varscan_results, exp_name)
     final_indel_result = get_finalized_indel_file(varscan_results, exp_name)
+    annotated_snp_file = get_annotated_snp_file(varscan_results, exp_name)
+    annotated_indel_file = get_annotated_indel_file(varscan_results, exp_name)
     cmd = [
         annot_script,
         final_snp_result,
         config["resr_database_dir"],
         resr_snp_result,
         ">",
-        get_annotated_snp_file(varscan_results, exp_name)
+        annotated_snp_file
     ]
     proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
                           check=True)
@@ -401,10 +404,65 @@ def annotate_results(varscan_results, exp_name, config):
         config["resr_database_dir"],
         resr_indel_result,
         ">",
-        get_annotated_indel_file(varscan_results, exp_name)
+        annotated_indel_file
     ]
     proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
                           check=True)
+
+    # Last step: transform the VCF + annotated file to a final file
+    # by combining the two VCF files into a large result file amended
+    # by the Name column of the annotation file
+    # 1. Make a pos2name map for everything
+    pos2name = {}
+    snp_df = pandas.read_csv(annotated_snp_file, sep="\t", header=0)
+    indel_df = pandas.read_csv(annotated_indel_file, sep="\t", header=0)
+    for index, row in snp_df.iterrows():
+        pos = int(row["VarscanPosition"])
+        name = row["Name"]
+        pos2name[pos] = name
+
+    for index, row in indel_df.iterrows():
+        pos = int(row["VarscanPosition"])
+        name = row["Name"]
+        pos2name[pos] = name
+
+    # Now transform the contents of the VCF files
+    snp_reader = vcfpy.Reader.from_path(final_snp_result)
+    indel_reader = vcfpy.Reader.from_path(final_snp_result)
+
+    with open(os.path.join(varscan_results, "RESR_FINAL_RESULTS.tsv"), "w") as f:
+        header = [
+            "CHROM", "POS", "1ST_REF_BASE", "ALT", "CHANGE", "EFFECT",
+            "IMPACT", "CLASS",  "CODON", "AA_CHANGE",
+            "GENE", "CODING",
+            "SAMTOOLS_FREQ", "VARIANT_CALLERS", "VARIANT_FREQS",
+            "VARIANT_READS", "FREQ", "F1", "Name"
+        ]
+        f.write("\t".join(header) + '\n')
+        for record in snp_reader:
+            chrom = record.CHROM
+            pos = int(record.POS)
+            name = pos2name.get(pos, "NA")
+            out_row = [
+                chrom, pos, str(record.REF), str(record.ALT),
+                # CHANGE ??
+                "(TODO)",
+                ## TODO:
+                name
+            ]
+
+        for record in indel_reader:
+            chrom = record.CHROM
+            pos = int(record.POS)
+            name = pos2name.get(pos, "NA")
+            out_row = [
+                chrom, pos, str(record.REF), str(record.ALT),
+                # CHANGE ??
+                "(TODO)",
+                
+                ## TODO:
+                name
+            ]
 
 
 def run_resr_unfixed(varscan_results, exp_name, config):

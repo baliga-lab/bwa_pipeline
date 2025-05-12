@@ -368,13 +368,6 @@ def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combine
             print("Renaming chromosomes for snpEFF with bcftools:" + bcft_cmd1)
             os.system(bcft_cmd1)
 
-            # gzip and index vcf file with tabix
-            #bgzip_cmd1 = '%s -c %s > %s.gz' % (BGZIP, vcf_file_renamed,vcf_file_renamed)
-            #os.system(bgzip_cmd1)
-
-            #tabix_cmd1 = '%s -p vcf %s.gz' % (TABIX, vcf_file_renamed)
-            #os.system(tabix_cmd1)
-
         # create file names for output
         snpeff_vcf = re.split('final.', vcf_file)[0] + 'snpeff.' + re.split('final.', vcf_file)[1]
         print('snpeff_vcf:' + snpeff_vcf)
@@ -777,16 +770,17 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     varscan_variants(alignment_files_path, varscan_results, exp_name,
                      folder_name, files_2_delete, config)
 
+    """
     # 07b. Run resr unfixed pipeline
     resr_unfixed.run_resr_unfixed(varscan_results, exp_name, config)
 
+    """
     # 08. Run GATK variant Calling
     gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, config)
 
     # 09. Run SNPEff annotations
     vcf_file = run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combined_variants, exp_name,
                           snpeff_db, config)
-    """
     # 10. Collate variants into single file from 3 callers and unify them
     collate_variants(exp_name, combined_output_file, merged_variants_file,
                      combined_variants, varscan_results,
@@ -795,6 +789,7 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
 
     # 11. Delete temporary files_2_delete
     #delete_temp_files(files_2_delete)
+    """
     folder_count += 1
 
 
