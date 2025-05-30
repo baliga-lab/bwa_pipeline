@@ -314,7 +314,7 @@ def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combine
 
     # create output file for combined variants output
     combined_variants_output = '%s/%s_combined_variants.txt' %(combined_variants,exp_name)
-    print('combined_variants_output:%s' %(combined_variants_output))
+    print("combined_variants_output: '%s'" %(combined_variants_output))
 
     # open the final output file for writing before combining
     run_snpeff.t = open(combined_variants_output, 'w')
@@ -325,7 +325,7 @@ def run_snpeff(samtools_files_path, varscan_files_path, gatk_files_path, combine
 
         ## WW: is this the correct comparison ?? Note the ".gz", but
         ## bcftools returns an uncompressed file
-        if vcf_file == '%s_samtools_final.vcf.gz'%(samtools_files_path):
+        if vcf_file == '%s_samtools_final.vcf.gz' % (samtools_files_path):
             # reformat file for gzip compression
             #plain_vcf_name = re.split('.gz', vcf_file)[0]
             #os.system('mv %s %s' %(vcf_file, plain_vcf_name))
@@ -426,7 +426,6 @@ def salomon(aggregatedList, config):
         for variant in variants:
             uniqueLocation = variant[:3]
             # special case for MTB: Exclude ppe_ins_loci
-            print(uniqueLocation)
             if is_mtb:
                 if uniqueLocation[1] in ppe_ins_loci:
                     continue
@@ -448,7 +447,11 @@ def salomon(aggregatedList, config):
         for variants in aggregatedList:
             for variant in variants:
                 if uniqueLocation == variant[:3]:
-                    body=variant[:-2]
+                    body = variant[:-2]
+
+                    #if variant[-2] == 'varscan':
+                    #    print("VARSCAN, BODY START: ", body)
+
                     callers.append(variant[-2])
                     if variant[-2] == 'varscan':
                         freq=variant[-3]
@@ -491,8 +494,6 @@ def salomon(aggregatedList, config):
         freqFloatString = max(freqFloats)
 
         # Get the samtools frequency as final frequency if available otherwise pick varscan freq.
-        #print(callers)
-        #print(freqs)
         if 'samtools' in callers and len(callers) > 1:
             final_freq = freqs[callers.index('samtools')]
         elif 'varscan' in callers and 'samtools' not in callers:
@@ -543,7 +544,7 @@ def collate_variants(exp_name, combined_output_file, merged_variants_file,
                      combined_variants, varscan_results,
                      gatk_files_path, samtools_files_path,
                      config):
-    print( "\033[34m Running Collate variants.. \033[0m")
+    print( "\033[34m Running Collate variants.. (Combined output file: '%s', merged variants file: '%s') \033[0m" % (combined_output_file, merged_variants_file))
 
     # 2. recovering list of variants
     varscan_list,gatk_list,samtools_list = variantRetriever(combined_output_file)
@@ -696,7 +697,6 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     varscan_files_path = vs.get_varscan_files_path(varscan_results, exp_name)
     gatk_files_path = '%s/%s' % (gatk_results, exp_name)
 
-    """
     # 00. Get directories
     create_dirs(samtools_results, gatk_results, varscan_results,
                 data_trimmed_dir, fastqc_dir, alignment_results,
@@ -749,7 +749,7 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
             try:
                 tbprof_tool = config["tools"]["tbprofiler"]
                 ## TODO: comment me in skipping for speed
-                #run_tbprofiler(sorted_bam_file, sample_id, tbprofiler_results, config)
+                run_tbprofiler(sorted_bam_file, sample_id, tbprofiler_results, config)
             except:
                 print("WARNING: can't find TBprofiler setting, skipping")
 
@@ -760,7 +760,8 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     mark_duplicates(alignment_results, exp_name, base_file_name, config)
 
     # 04. Run GATK 1st PASS
-    #run_gatk(base_file_name,files_2_delete,exp_name,alignment_results)
+    run_gatk(base_file_name,files_2_delete,exp_name,alignment_results)
+
     # 06. Run Samtools variant calling
     bcftools_variants(samtools_results, alignment_files_path, exp_name, folder_name, config)
     # 07. Run varscan variant calling
@@ -770,11 +771,9 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
     varscan_variants(alignment_files_path, varscan_results, exp_name,
                      folder_name, files_2_delete, config)
 
-    """
     # 07b. Run resr unfixed pipeline
     resr_unfixed.run_resr_unfixed(varscan_results, exp_name, config)
 
-    """
     # 08. Run GATK variant Calling
     gatk_variants(alignment_files_path, gatk_results, exp_name, folder_name, config)
 
@@ -789,7 +788,7 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
 
     # 11. Delete temporary files_2_delete
     #delete_temp_files(files_2_delete)
-    """
+
     folder_count += 1
 
 

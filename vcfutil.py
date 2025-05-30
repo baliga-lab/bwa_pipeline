@@ -129,7 +129,7 @@ def combine_variants(snpeff_filtered_vcf, snpeff_final, combined_variants, runst
                 chm = "pDV"
             else:
                 chm = line.split('\t')[0]
-            #print("Frequencies: " + frequencies[index] + "index: " + str(index))   
+            #print("Frequencies: " + frequencies[index] + "index: " + str(index))
             pos = line.split('\t')[1]
             refs = list(line.split('\t')[2])[0] # grab only first character in reference sequence
             ref = line.split('\t')[2]

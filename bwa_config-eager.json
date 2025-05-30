@@ -47,7 +47,7 @@
 	    "tabix": "tabix",
 	    "bgzip": "bgzip",
 	    "trim_galore": "trim_galore",
-	    "vceff_opl": "perl /proj/omics4tb2/wwu/snpEff/scripts/vcfEffOnePerLine.pl",
+	    "vceff_opl": "perl /proj/omics4tb2/wwu/snpEff/scripts/_OLD/vcfEffOnePerLine.pl",
         "tbprofiler": "tb-profiler"
     },
     "fastq_patterns": ["*_{{readnum}}.fastq.gz"],

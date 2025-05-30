@@ -1,7 +1,9 @@
 import vcfpy
 import os, subprocess
 import varscan as vs
+from snpeff import SnpEff
 import pandas
+import traceback
 
 GENOME_SIZE = 4411532.0
 MIN_COVERAGE = 3
@@ -31,10 +33,10 @@ def get_snpsift_filtered_indel_file(varscan_results, exp_name):
     return '%s_RESR_UNFIXED_inds_snpsift_filtered.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_finalized_snp_file(varscan_results, exp_name):
-    return '%s_RESR_UNFIXED_snps_finalized.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_snps_finalized.txt' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_finalized_indel_file(varscan_results, exp_name):
-    return '%s_RESR_UNFIXED_inds_finalized.vcf' % vs.get_varscan_files_path(varscan_results, exp_name)
+    return '%s_RESR_UNFIXED_inds_finalized.txt' % vs.get_varscan_files_path(varscan_results, exp_name)
 
 def get_annotated_snp_file(varscan_results, exp_name):
     return '%s_RESR_UNFIXED_snps_annotated.tsv' % vs.get_varscan_files_path(varscan_results, exp_name)
@@ -308,6 +310,7 @@ def run_snpeff(varscan_results, exp_name, config):
                           check=True)
 
     # snpsift
+    print("RUNNING SNPSIFT on '%s'" % snpeff_format_indel_file)
     cmd = [
         "cat",
         # inds_snpeff_formatted.vcf
@@ -323,6 +326,7 @@ def run_snpeff(varscan_results, exp_name, config):
     proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
                           check=True)
 
+    print("RUNNING SNPSIFT on '%s'" % snpeff_format_snp_file)
     cmd = [
         "cat",
         # snps_snpeff_formatted.vcf
@@ -338,48 +342,95 @@ def run_snpeff(varscan_results, exp_name, config):
     proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
                           check=True)
 
+    # SNPEFF
+
+    print("RUNNING VOPL on '%s'" % snpsift_filtered_indel_file)
+    print("RUNNING VOPL on '%s'" % snpsift_filtered_snp_file)
+    snpeff = SnpEff(config['tools']['snpeff'], config['tools']['snpsift'], config['tools']['vceff_opl'])
+
     # vcfEffOnePerLine | snpSift
+
+
+    # generate result in combined_variants format
+    # NOT a VCF FILE !!! We annotate this differently
     finalized_indel_file = get_finalized_indel_file(varscan_results, exp_name)
     finalized_snp_file = get_finalized_snp_file(varscan_results, exp_name)
-    cmd = [
-        "cat",
-        # indsel_snpsift_filtered.vcf
-        snpsift_filtered_indel_file,
-        "|",
-        # TODO: VCEFF_OPL SWALLOWS THE META INFORMATION FROM THE COMMENTS !!
-        config["tools"]["vceff_opl"],
-        #"|",
-        #config["tools"]["snpsift"],
-        #"extractFields", "-",
-        #"CHROM POS REF ALT \"GEN[*].AD\"",
-        #"\"GEN[*].RD\" \"(FILTER = 'PASS')\"",
-        ">",
-        # inds_finalized.vcf
-        finalized_indel_file
-    ]
-    proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
-                          check=True)
-    cmd = [
-        "cat",
-        # snps_snpsift_filtered.vcf
-        snpsift_filtered_snp_file,
-        "|",
-        config["tools"]["vceff_opl"],
+    print("EXTRACTING TO ", finalized_indel_file)
+    print("EXTRACTING TO ", finalized_snp_file)
 
-        #"|",
-        #config["tools"]["snpsift"],
-        #"extractFields", "-",
-        #"CHROM POS REF ALT \"GEN[*].AD\"",
-        #"\"GEN[*].RD\" \"(FILTER = 'PASS')\"",
-        ">",
-        # snp_finalized.vcf
-        finalized_snp_file
-    ]
-    proc = subprocess.run(' '.join(cmd), shell=True, capture_output=False,
-                          check=True)
+    snpeff.vceff_opl_extract_fields(snpsift_filtered_indel_file,
+                                    finalized_indel_file,
+                                    ["CHROM", "POS", "REF", "ALT", "AF",
+                                     "\"(FILTER = \'PASS\')\"",
+                                     "\"EFF[*].EFFECT\"",
+                                     "\"EFF[*].IMPACT\"",
+                                     "\"EFF[*].FUNCLASS\"",
+                                     "\"EFF[*].CODON\"",
+                                     "\"EFF[*].AA\"",
+                                     "\"EFF[*].AA_LEN\"",
+                                     "\"EFF[*].GENE\"",
+                                     "\"EFF[*].CODING\"",
+                                     "\"EFF[*].RANK\"",
+                                     "\"EFF[*].DISTANCE\""]
+                                    )
+
+    # THE VCEFF_OPL_EXTRACT METHOD FAILS FOR THE allele frequency attribute, so we need to
+    # extract the attributes by ourselves
+    indel_attr_map = {}
+    with open(snpsift_filtered_indel_file) as f:
+        for line in f:
+            if line.startswith("#"):
+                continue
+            line = line.strip()
+            if line == "":
+                continue
+            row = line.split("\t")
+            pos = row[1]
+            af, vc, rc = extract_allele_freq_and_counts(row)
+            indel_attr_map[pos] = (af, vc, rc)
+
+    snpeff.vceff_opl_extract_fields(snpsift_filtered_snp_file,
+                                    finalized_snp_file,
+                                    ["CHROM", "POS", "REF", "ALT", "AF",
+                                     "\"(FILTER = \'PASS\')\"",
+                                     "\"EFF[*].EFFECT\"",
+                                     "\"EFF[*].IMPACT\"",
+                                     "\"EFF[*].FUNCLASS\"",
+                                     "\"EFF[*].CODON\"",
+                                     "\"EFF[*].AA\"",
+                                     "\"EFF[*].AA_LEN\"",
+                                     "\"EFF[*].GENE\"",
+                                     "\"EFF[*].CODING\"",
+                                     "\"EFF[*].RANK\"",
+                                     "\"EFF[*].DISTANCE\""]
+                                    )
+
+    snp_attr_map = {}
+    with open(snpsift_filtered_snp_file) as f:
+        for line in f:
+            if line.startswith("#"):
+                continue
+            line = line.strip()
+            if line == "":
+                continue
+            row = line.split("\t")
+            pos = row[1]
+            af, vc, rc = extract_allele_freq_and_counts(row)
+            snp_attr_map[pos] = (af, vc, rc)
+    return indel_attr_map, snp_attr_map
 
 
-def annotate_results(varscan_results, exp_name, config):
+def extract_allele_freq_and_counts(row):
+    format_desc = row[8].split(":")
+    data = row[9].split(":")
+    freq_idx = format_desc.index("FREQ")
+    vc_idx = format_desc.index("AD")
+    rc_idx = format_desc.index("RD")
+    return data[freq_idx].replace("%25", "%"), data[vc_idx], data[rc_idx]
+
+
+def annotate_results(varscan_results, exp_name, config, indel_attr_map,
+                     snp_attr_map):
     annot_script = os.path.join(config["run_dir"], "annotate_mtb_results.py")
     resr_snp_result = get_result_snp_file(varscan_results, exp_name)
     resr_indel_result = get_result_indel_file(varscan_results, exp_name)
@@ -387,8 +438,12 @@ def annotate_results(varscan_results, exp_name, config):
     final_indel_result = get_finalized_indel_file(varscan_results, exp_name)
     annotated_snp_file = get_annotated_snp_file(varscan_results, exp_name)
     annotated_indel_file = get_annotated_indel_file(varscan_results, exp_name)
+    print(indel_attr_map)
+    print(snp_attr_map)
+
     cmd = [
         annot_script,
+        "--nonvcf",
         final_snp_result,
         config["resr_database_dir"],
         resr_snp_result,
@@ -400,6 +455,7 @@ def annotate_results(varscan_results, exp_name, config):
 
     cmd = [
         annot_script,
+        "--nonvcf",
         final_indel_result,
         config["resr_database_dir"],
         resr_indel_result,
@@ -426,43 +482,74 @@ def annotate_results(varscan_results, exp_name, config):
         name = row["Name"]
         pos2name[pos] = name
 
-    # Now transform the contents of the VCF files
-    snp_reader = vcfpy.Reader.from_path(final_snp_result)
-    indel_reader = vcfpy.Reader.from_path(final_snp_result)
+    # TODO: FINAL SNP RESULT AND FINAL INDEL RESULT ARE NOT VCF
+    # WE STILL HAVE TO CONCATENATE AND THEM INTO A RESULT
+    snp_df = pandas.read_csv(final_snp_result, sep="\t", header=0)
+    indel_df = pandas.read_csv(final_indel_result, sep="\t", header=0)
 
-    with open(os.path.join(varscan_results, "RESR_FINAL_RESULTS.tsv"), "w") as f:
+    with open(os.path.join(varscan_results, "RESR_FINAL_RESULTS.tsv"), "w") as out:
         header = [
             "CHROM", "POS", "1ST_REF_BASE", "ALT", "CHANGE", "EFFECT",
             "IMPACT", "CLASS",  "CODON", "AA_CHANGE",
             "GENE", "CODING",
-            "SAMTOOLS_FREQ", "VARIANT_CALLERS", "VARIANT_FREQS",
-            "VARIANT_READS", "FREQ", "F1", "Name"
+            "Freq", "Reads1", "Reads2",
+            "Name"
         ]
-        f.write("\t".join(header) + '\n')
-        for record in snp_reader:
-            chrom = record.CHROM
-            pos = int(record.POS)
-            name = pos2name.get(pos, "NA")
-            out_row = [
-                chrom, pos, str(record.REF), str(record.ALT),
-                # CHANGE ??
-                "(TODO)",
-                ## TODO:
-                name
-            ]
+        out.write("\t".join(header) + '\n')
 
-        for record in indel_reader:
-            chrom = record.CHROM
-            pos = int(record.POS)
+        for index, row in snp_df.iterrows():
+            chrom = row["CHROM"]
+            pos = int(row["POS"])
             name = pos2name.get(pos, "NA")
+            alt = row["ALT"]
             out_row = [
-                chrom, pos, str(record.REF), str(record.ALT),
-                # CHANGE ??
-                "(TODO)",
-                
-                ## TODO:
+                chrom, str(pos), row["REF"],
+                alt[0],  # "alt"
+                alt,  # change
+                row["EFF[*].EFFECT"],
+                row["EFF[*].IMPACT"],
+                row["EFF[*].FUNCLASS"],
+                row["EFF[*].CODON"],
+                row["EFF[*].AA"],
+                row["EFF[*].GENE"],
+                row["EFF[*].CODING"],
+                snp_attr_map[str(pos)][0],
+                snp_attr_map[str(pos)][2],
+                snp_attr_map[str(pos)][1],
                 name
             ]
+            out_row = list(map(str, out_row))
+            out.write("\t".join(out_row) + "\n")
+
+        for index, row in indel_df.iterrows():
+            chrom = row["CHROM"]
+            pos = int(row["POS"])
+            name = pos2name.get(pos, "NA")
+            alt = row["ALT"]  # TODO
+            out_row = [
+                chrom, pos,
+                row["REF"],
+                alt[0],  # alt
+                alt,  # change
+                row["EFF[*].EFFECT"],
+                row["EFF[*].IMPACT"],
+                row["EFF[*].FUNCLASS"],
+                row["EFF[*].CODON"],
+                row["EFF[*].AA"],
+                row["EFF[*].GENE"],
+                row["EFF[*].CODING"],
+                indel_attr_map[str(pos)][0],
+                indel_attr_map[str(pos)][2],
+                indel_attr_map[str(pos)][1],
+                name
+            ]
+            try:
+                line = "\t".join(out_row) + "\n"
+                out_row = list(map(str, out_row))
+                out.write("\t".join(out_row) + "\n")
+            except:
+                traceback.print_exc()
+                print("Error in position %s, skipping" % str(pos))
 
 
 def run_resr_unfixed(varscan_results, exp_name, config):
@@ -480,5 +567,5 @@ def run_resr_unfixed(varscan_results, exp_name, config):
     info_mark(varscan_results, exp_name, config)
     redepin_filt(varscan_results, exp_name, config, all_ratio, avg_seq_depth)
     convert_to_vcf(varscan_results, exp_name, config)
-    run_snpeff(varscan_results, exp_name, config)
-    annotate_results(varscan_results, exp_name, config)
+    indel_attr_map, snp_attr_map = run_snpeff(varscan_results, exp_name, config)
+    annotate_results(varscan_results, exp_name, config, indel_attr_map, snp_attr_map)
