@@ -438,8 +438,8 @@ def annotate_results(varscan_results, exp_name, config, indel_attr_map,
     final_indel_result = get_finalized_indel_file(varscan_results, exp_name)
     annotated_snp_file = get_annotated_snp_file(varscan_results, exp_name)
     annotated_indel_file = get_annotated_indel_file(varscan_results, exp_name)
-    print(indel_attr_map)
-    print(snp_attr_map)
+    #print(indel_attr_map)
+    #print(snp_attr_map)
 
     cmd = [
         annot_script,

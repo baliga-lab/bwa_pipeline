@@ -1,9 +1,10 @@
 {
     "organism": "mtb",
     "run_dir": "/proj/omics4tb2/wwu/bwa_pipeline_github",
-    "data_dir": "/proj/omics4tb2/wwu/bwa_pipeline_github/TEST_DATA",
+    "data_dir": "/proj/omics4eco/wwu/EVANS_DATA",
+    "log_dir": "/proj/omics4eco/wwu/EVANS_SLURM_LOGS",
     "genome_dir": "/proj/omics4tb2/wwu/bwa_pipeline_github/mtb_genome",
-    "result_dir": "/proj/omics4tb2/wwu/bwa_pipeline_github/bwa_results",
+    "result_dir": "/proj/omics4eco/wwu/EVANS_RESULTS",
     "resr_database_dir": "/proj/omics4tb2/wwu/bwa_pipeline_github/resr_databases",
     "tbprofiler_env": "TBprofiler2",
     "s3_conf": {
@@ -50,7 +51,7 @@
 	    "vceff_opl": "perl /proj/omics4tb2/wwu/snpEff/scripts/_OLD/vcfEffOnePerLine.pl",
         "tbprofiler": "tb-profiler"
     },
-    "fastq_patterns": ["*_{{readnum}}.fastq.gz"],
+    "fastq_patterns": ["*_{{readnum}}.fastq", "*_{{readnum}}.fastq.gz"],
     "tmp_dir": "/proj/omics4tb2/wwu/bwa_pipeline_github/bwa_tmp",
     "organisms": {
 	    "mmp": { "snpeff_db": "Methanococcus_maripaludis_s2" },
