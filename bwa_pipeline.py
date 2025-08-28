@@ -50,8 +50,11 @@ def create_dirs(samtools_results, gatk_results, varscan_results, data_trimmed_di
         print()
         print(dir)
         if not os.path.exists('%s' %(dir)):
-            os.makedirs('%s' %(dir))
-            print ('\033[31m %s directory does NOT exist. I am creating it. \033[0m' %(dir))
+            try:
+                os.makedirs('%s' %(dir))
+                print ('\033[31m %s directory does NOT exist. I am creating it. \033[0m' %(dir))
+            except:
+                print('WARNING: Something went wrong. I cannot create %s directory. Skipping.' %(dir))
         else:
             print ('\033[31m %s directory exists. Not creating. \033[0m' %(dir))
 
@@ -88,6 +91,9 @@ def trim_galore(first_pair_file, second_pair_file, folder_name, sample_id, file_
                                second_pair_file, config)
 
 
+def get_base_filename(alignment_results, sample_id):
+    return os.path.join(alignment_results, sample_id)
+
 def run_bwa_alignment(alignment_results, file_ext, first_file_name, second_file_name, lane,
                       folder_name, sample_id, RGId, RGSm, RGLb, RGPu, files_2_delete,
                       data_trimmed_dir, genome_fasta, config):
@@ -114,7 +120,7 @@ def run_bwa_alignment(alignment_results, file_ext, first_file_name, second_file_
     # modify read group information
     read_group = "'@RG\\tID:%s\\tPL:ILLUMINA\\tSM:%s\\tLB:%s\\tPU:%s'" %(RGId, RGSm, RGLb, RGPu)
 
-    base_file_name = '%s/%s'%(alignment_results,sample_id)
+    base_file_name = get_base_filename(alignment_results, sample_id)
     print('Base Filename: %s' %(base_file_name))
 
     # bwa run command
@@ -731,15 +737,18 @@ def run_pipeline(organism, data_folder, resultdir, snpeff_db, genome_fasta, conf
         RGPu = lane
         print( "RG: ID: %s SM: %s LB: %s PU: %s" %(RGId, RGSm, RGLb, RGPu))
 
+        # Get the base file name here, because on reruns, checkpointing will leave
+        # base_file_name undefined if not retrieved before the check
+        base_file_name = get_base_filename(alignment_results, sample_id)
         # 01. Run trim_galore + FastQC
         trim_galore(first_pair_file, second_pair_file, folder_name, sample_id, file_ext,
                     data_trimmed_dir, fastqc_dir, config)
 
         # 02. Run bwa alignment to produce SAM file.
-        base_file_name = run_bwa_alignment(alignment_results, file_ext, first_file_name,
-                                           second_file_name, lane,folder_name, sample_id,
-                                           RGId, RGSm, RGLb, RGPu, files_2_delete,
-                                           data_trimmed_dir, genome_fasta, config)
+        run_bwa_alignment(alignment_results, file_ext, first_file_name,
+                          second_file_name, lane,folder_name, sample_id,
+                          RGId, RGSm, RGLb, RGPu, files_2_delete,
+                          data_trimmed_dir, genome_fasta, config)
 
         # 03. Run samtools fixmate
         sorted_bam_file = run_samtools_fixmate_step(base_file_name, sample_id,files_2_delete, config)
